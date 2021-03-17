@@ -2,7 +2,11 @@ use self::project::Project;
 use argh::FromArgs;
 use std::fs::read_to_string;
 
+mod action_list;
+mod markdown;
 mod project;
+mod project_list;
+mod someday_list;
 
 /// Task management application.
 #[derive(Debug, FromArgs)]

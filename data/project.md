@@ -1,10 +1,11 @@
 # Project with `formatting`
-#gtd #project
+#gtd-project
 
 ## Goal
 
 This is a test project.
 
 ## Action Items
+
 - [ ] First action
 - [ ] Second action
