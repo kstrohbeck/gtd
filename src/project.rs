@@ -1,8 +1,7 @@
-use crate::markdown::{parse_event, parse_heading, parse_tasklist, parse_until, Fragment};
+use crate::markdown::{parse_heading, parse_tasklist, parse_until, Fragment};
 use pulldown_cmark::{Event, Options, Parser, Tag};
-use std::iter::Peekable;
 
-const GTD_PROJECT_TAG: &'static str = "gtd-project";
+const GTD_PROJECT_TAG: &str = "gtd-project";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
@@ -30,16 +29,8 @@ impl Project {
         let mut actions = None;
 
         while parser.peek().is_some() {
-            let mut heading = parse_heading(&mut parser, 2)?.0;
-
-            let title = match heading.pop()? {
-                Event::Text(t) => t,
-                _ => return None,
-            };
-
-            if !heading.is_empty() {
-                return None;
-            }
+            let heading = parse_heading(&mut parser, 2)?;
+            let title = heading.try_as_str()?;
 
             match &*title {
                 "Goal" => goal = Some(parse_until(&mut parser, Event::Start(Tag::Heading(2)))),
