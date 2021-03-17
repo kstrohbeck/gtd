@@ -74,6 +74,19 @@ impl Fragment {
             None
         }
     }
+
+    pub fn try_as_title_string(&self) -> Option<String> {
+        let mut s = String::new();
+
+        for ev in &self.0 {
+            match ev {
+                Event::Text(t) | Event::Code(t) => s.push_str(t),
+                _ => return None,
+            }
+        }
+
+        Some(s)
+    }
 }
 
 pub fn parse_event<'a, I>(mut parser: I, req: Event<'a>) -> Option<Event<'a>>
@@ -213,6 +226,25 @@ pub fn as_obsidian_link<'a>(v: &[Event<'a>]) -> Option<CowStr<'a>> {
 mod tests {
     use super::*;
     use pulldown_cmark::Parser;
+
+    mod fragment {
+        use super::*;
+
+        mod try_as_title_string {
+            use super::*;
+
+            #[test]
+            fn code_text_is_concatenated() {
+                let fragment = Fragment::from_events(vec![
+                    Event::Text("Foo ".into()),
+                    Event::Code("bar".into()),
+                    Event::Text(" baz".into()),
+                ]);
+                let title = fragment.try_as_title_string();
+                assert_eq!(title, Some(String::from("Foo bar baz")));
+            }
+        }
+    }
 
     mod parse_until {
         use super::*;
