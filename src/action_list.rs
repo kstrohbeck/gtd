@@ -3,7 +3,7 @@ use pulldown_cmark::{CowStr, Event, Options, Parser};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionList<'a> {
-    pub title: Fragment<'a>,
+    pub title: Fragment,
     pub tags: Vec<String>,
     pub contexts: Vec<Context<'a>>,
 }
@@ -32,7 +32,7 @@ impl<'a> ActionList<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Context<'a> {
-    pub title: Fragment<'a>,
+    pub title: Fragment,
     pub actions: Vec<Action<'a>>,
 }
 
@@ -51,19 +51,22 @@ impl<'a> Context<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Action<'a> {
-    pub text: Fragment<'a>,
+    pub text: Fragment,
     pub project: Option<CowStr<'a>>,
 }
 
 impl<'a> Action<'a> {
-    pub fn from_fragment(fragment: Fragment<'a>) -> Self {
+    pub fn from_fragment(fragment: Fragment) -> Self {
         // Try to find the last soft break.
-        let soft_break_idx = fragment.0.iter().rposition(|e| e == &Event::SoftBreak);
+        let soft_break_idx = fragment
+            .as_events()
+            .iter()
+            .rposition(|e| e == &Event::SoftBreak);
         if let Some(idx) = soft_break_idx {
-            let (text, link) = fragment.0.split_at(idx);
+            let (text, link) = fragment.as_events().split_at(idx);
             if let Some(link) = as_obsidian_link(&link[1..]) {
                 Action {
-                    text: Fragment(text.to_vec()),
+                    text: Fragment::from_events(text.to_vec()),
                     project: Some(link),
                 }
             } else {
@@ -91,7 +94,7 @@ mod tests {
         let action_list = ActionList::parse(text).unwrap();
         assert_eq!(
             action_list.title,
-            Fragment(vec![Event::Text("Next Actions".into())])
+            Fragment::from_events(vec![Event::Text("Next Actions".into())])
         );
     }
 
@@ -109,14 +112,14 @@ mod tests {
         assert_eq!(
             action_list.contexts,
             vec![Context {
-                title: Fragment(vec![Event::Text("@foo".into())]),
+                title: Fragment::from_events(vec![Event::Text("@foo".into())]),
                 actions: vec![
                     Action {
-                        text: Fragment(vec![Event::Text("bar".into()),]),
+                        text: Fragment::from_events(vec![Event::Text("bar".into()),]),
                         project: None,
                     },
                     Action {
-                        text: Fragment(vec![Event::Text("baz".into()),]),
+                        text: Fragment::from_events(vec![Event::Text("baz".into()),]),
                         project: Some(CowStr::Borrowed("quux")),
                     },
                 ],
@@ -133,22 +136,22 @@ mod tests {
             action_list.contexts,
             vec![
                 Context {
-                    title: Fragment(vec![Event::Text("@foo".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@foo".into())]),
                     actions: vec![
                         Action {
-                            text: Fragment(vec![Event::Text("bar".into()),]),
+                            text: Fragment::from_events(vec![Event::Text("bar".into()),]),
                             project: None,
                         },
                         Action {
-                            text: Fragment(vec![Event::Text("baz".into()),]),
+                            text: Fragment::from_events(vec![Event::Text("baz".into()),]),
                             project: Some(CowStr::Borrowed("quux")),
                         },
                     ],
                 },
                 Context {
-                    title: Fragment(vec![Event::Text("@thing".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@thing".into())]),
                     actions: vec![Action {
-                        text: Fragment(vec![Event::Text("stuff".into()),]),
+                        text: Fragment::from_events(vec![Event::Text("stuff".into()),]),
                         project: None,
                     },],
                 }

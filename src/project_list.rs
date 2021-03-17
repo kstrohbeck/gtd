@@ -2,7 +2,7 @@ use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, F
 use pulldown_cmark::{CowStr, Options, Parser};
 
 pub struct ProjectList<'a> {
-    pub title: Fragment<'a>,
+    pub title: Fragment,
     pub tags: Vec<String>,
     pub items: Vec<CowStr<'a>>,
 }

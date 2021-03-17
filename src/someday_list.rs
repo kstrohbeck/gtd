@@ -2,7 +2,7 @@ use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, F
 use pulldown_cmark::{CowStr, Options, Parser};
 
 pub struct SomedayList<'a> {
-    pub title: Fragment<'a>,
+    pub title: Fragment,
     pub tags: Vec<String>,
     pub items: Vec<Item<'a>>,
 }
@@ -43,7 +43,7 @@ impl<'a> SomedayList<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item<'a> {
     Project(CowStr<'a>),
-    Simple(Fragment<'a>),
+    Simple(Fragment),
 }
 
 #[cfg(test)]
@@ -57,7 +57,7 @@ mod tests {
         let someday_list = SomedayList::parse(text).unwrap();
         assert_eq!(
             someday_list.title,
-            Fragment(vec![Event::Text("Someday".into())])
+            Fragment::from_events(vec![Event::Text("Someday".into())])
         );
     }
 
@@ -76,7 +76,9 @@ mod tests {
             someday_list.items,
             vec![
                 Item::Project(CowStr::Borrowed("Some project")),
-                Item::Simple(Fragment(vec![Event::Text("Not a project".into())])),
+                Item::Simple(Fragment::from_events(vec![Event::Text(
+                    "Not a project".into()
+                )])),
             ]
         );
     }

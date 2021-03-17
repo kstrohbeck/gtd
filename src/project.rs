@@ -5,17 +5,17 @@ use std::iter::Peekable;
 const GTD_PROJECT_TAG: &'static str = "gtd-project";
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Project<'a> {
-    pub title: Fragment<'a>,
+pub struct Project {
+    pub title: Fragment,
     pub tags: Vec<String>,
-    pub goal: Option<Fragment<'a>>,
-    pub info: Option<Fragment<'a>>,
-    pub actions: Option<Vec<(bool, Fragment<'a>)>>,
+    pub goal: Option<Fragment>,
+    pub info: Option<Fragment>,
+    pub actions: Option<Vec<(bool, Fragment)>>,
 }
 
-impl<'a> Project<'a> {
+impl Project {
     // TODO: This should return a Result with errors.
-    pub fn parse(text: &'a str) -> Option<Self> {
+    pub fn parse(text: &str) -> Option<Self> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let mut parser = Parser::new_ext(text, options);
@@ -95,7 +95,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.title,
-            Fragment(vec![Event::Text("Project title".into())])
+            Fragment::from_events(vec![Event::Text("Project title".into())])
         );
     }
 
@@ -105,7 +105,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.title,
-            Fragment(vec![
+            Fragment::from_events(vec![
                 Event::Text("Title with ".into()),
                 Event::Code("code".into()),
             ])
@@ -135,7 +135,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.goal,
-            Some(Fragment(vec![
+            Some(Fragment::from_events(vec![
                 Event::Start(Tag::Paragraph),
                 Event::Text("Goal text".into()),
                 Event::End(Tag::Paragraph)
@@ -149,7 +149,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.goal,
-            Some(Fragment(vec![
+            Some(Fragment::from_events(vec![
                 Event::Start(Tag::Paragraph),
                 Event::Text("Goal text".into()),
                 Event::End(Tag::Paragraph)
@@ -163,7 +163,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.info,
-            Some(Fragment(vec![
+            Some(Fragment::from_events(vec![
                 Event::Start(Tag::Paragraph),
                 Event::Text("Foo".into()),
                 Event::End(Tag::Paragraph)
@@ -180,8 +180,14 @@ mod tests {
         assert_eq!(
             project.actions,
             Some(vec![
-                (true, Fragment(vec![Event::Text("First action".into())])),
-                (false, Fragment(vec![Event::Text("Second action".into())])),
+                (
+                    true,
+                    Fragment::from_events(vec![Event::Text("First action".into())])
+                ),
+                (
+                    false,
+                    Fragment::from_events(vec![Event::Text("Second action".into())])
+                ),
             ]),
         );
     }
@@ -194,7 +200,7 @@ mod tests {
 
         assert_eq!(
             project.goal,
-            Some(Fragment(vec![
+            Some(Fragment::from_events(vec![
                 Event::Start(Tag::Paragraph),
                 Event::Text("Goal text".into()),
                 Event::End(Tag::Paragraph)
@@ -203,7 +209,7 @@ mod tests {
 
         assert_eq!(
             project.info,
-            Some(Fragment(vec![
+            Some(Fragment::from_events(vec![
                 Event::Start(Tag::Paragraph),
                 Event::Text("Foo".into()),
                 Event::End(Tag::Paragraph)
@@ -213,8 +219,14 @@ mod tests {
         assert_eq!(
             project.actions,
             Some(vec![
-                (true, Fragment(vec![Event::Text("First action".into())])),
-                (false, Fragment(vec![Event::Text("Second action".into())])),
+                (
+                    true,
+                    Fragment::from_events(vec![Event::Text("First action".into())])
+                ),
+                (
+                    false,
+                    Fragment::from_events(vec![Event::Text("Second action".into())])
+                ),
             ]),
         );
     }
