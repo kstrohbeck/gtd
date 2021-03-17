@@ -9,4 +9,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added the `orphaned` command.
 - Created data types and Markdown parsers for all main filetypes.
