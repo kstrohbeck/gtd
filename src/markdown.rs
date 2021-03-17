@@ -8,6 +8,17 @@ impl<'a> Fragment<'a> {
     pub fn as_events(&self) -> &[Event<'a>] {
         &self.0[..]
     }
+
+    pub fn try_as_str(&self) -> Option<&str> {
+        if self.0.len() == 1 {
+            match &self.0[0] {
+                Event::Text(t) => Some(&*t),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
 }
 
 pub fn parse_event<'a, I>(mut parser: I, req: Event<'a>) -> Option<Event<'a>>

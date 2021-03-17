@@ -25,4 +25,8 @@ impl<'a> ProjectList<'a> {
 
         Some(Self { title, tags, items })
     }
+
+    pub fn contains(&self, link: &str) -> bool {
+        self.items.iter().any(|p| &**p == link)
+    }
 }
