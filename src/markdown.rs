@@ -14,11 +14,7 @@ pub fn parse_event<'a, I>(mut parser: I, req: Event<'a>) -> Option<Event<'a>>
 where
     I: Iterator<Item = Event<'a>>,
 {
-    if parser.next()? == req {
-        Some(req)
-    } else {
-        None
-    }
+    parser.next().filter(|ev| ev == &req)
 }
 
 pub fn parse_until<'a, I>(parser: &mut Peekable<I>, until: Event<'a>) -> Fragment<'a>
@@ -42,21 +38,7 @@ pub fn parse_until_incl<'a, I>(parser: &mut I, until: Event<'a>) -> Fragment<'a>
 where
     I: Iterator<Item = Event<'a>>,
 {
-    let mut frag = Vec::new();
-
-    loop {
-        let p = parser.next();
-
-        if let Some(p) = p {
-            if p == until {
-                break;
-            }
-            frag.push(p);
-        } else {
-            break;
-        }
-    }
-
+    let frag = parser.take_while(|p| p != &until).collect();
     Fragment(frag)
 }
 
@@ -74,14 +56,7 @@ where
     I: Iterator<Item = Event<'a>>,
 {
     parse_event(&mut parser, Event::Start(Tag::List(None)))?;
-
-    let mut items = vec![];
-    while let Some(item) = parse_item(&mut parser) {
-        items.push(item);
-    }
-
-    // Item parse failure occurs at end of list event, so we don't need to explicitly parse it.
-
+    let items = std::iter::from_fn(|| parse_item(&mut parser)).collect();
     Some(items)
 }
 
@@ -99,15 +74,7 @@ where
     I: Iterator<Item = Event<'a>>,
 {
     parse_event(&mut parser, Event::Start(Tag::List(None)))?;
-
-    let mut tasks = vec![];
-
-    while let Some(task) = parse_task(&mut parser) {
-        tasks.push(task);
-    }
-
-    // Task parse failure occurs at end of list event, so we don't need to explicitly parse it.
-
+    let tasks = std::iter::from_fn(|| parse_task(&mut parser)).collect();
     Some(tasks)
 }
 
