@@ -1,7 +1,7 @@
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, Tag};
 use std::iter::Peekable;
 
-fn cow_str_static<'a>(cow: CowStr<'a>) -> CowStr<'static> {
+pub fn cow_str_static<'a>(cow: CowStr<'a>) -> CowStr<'static> {
     match cow {
         CowStr::Borrowed(s) => CowStr::Boxed(s.into()),
         CowStr::Boxed(s) => CowStr::Boxed(s),

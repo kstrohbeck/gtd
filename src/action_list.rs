@@ -2,14 +2,14 @@ use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, F
 use pulldown_cmark::{CowStr, Event, Options, Parser};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ActionList<'a> {
+pub struct ActionList {
     pub title: Fragment,
     pub tags: Vec<String>,
-    pub contexts: Vec<Context<'a>>,
+    pub contexts: Vec<Context>,
 }
 
-impl<'a> ActionList<'a> {
-    pub fn parse(text: &'a str) -> Option<Self> {
+impl ActionList {
+    pub fn parse(text: &str) -> Option<Self> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let mut parser = Parser::new_ext(text, options);
@@ -31,13 +31,13 @@ impl<'a> ActionList<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Context<'a> {
+pub struct Context {
     pub title: Fragment,
-    pub actions: Vec<Action<'a>>,
+    pub actions: Vec<Action>,
 }
 
-impl<'a> Context<'a> {
-    pub fn parse<I>(mut parser: I) -> Option<Self>
+impl Context {
+    pub fn parse<'a, I>(mut parser: I) -> Option<Self>
     where
         I: Iterator<Item = Event<'a>>,
     {
@@ -50,12 +50,12 @@ impl<'a> Context<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Action<'a> {
+pub struct Action {
     pub text: Fragment,
-    pub project: Option<CowStr<'a>>,
+    pub project: Option<CowStr<'static>>,
 }
 
-impl<'a> Action<'a> {
+impl Action {
     pub fn from_fragment(fragment: Fragment) -> Self {
         // Try to find the last soft break.
         let soft_break_idx = fragment

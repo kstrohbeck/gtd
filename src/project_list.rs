@@ -1,14 +1,14 @@
 use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, Fragment};
 use pulldown_cmark::{CowStr, Options, Parser};
 
-pub struct ProjectList<'a> {
+pub struct ProjectList {
     pub title: Fragment,
     pub tags: Vec<String>,
-    pub items: Vec<CowStr<'a>>,
+    pub items: Vec<CowStr<'static>>,
 }
 
-impl<'a> ProjectList<'a> {
-    pub fn parse(text: &'a str) -> Option<Self> {
+impl ProjectList {
+    pub fn parse(text: &str) -> Option<Self> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let mut parser = Parser::new_ext(text, options);
@@ -19,8 +19,7 @@ impl<'a> ProjectList<'a> {
         let l = parse_list(&mut parser)?;
         let items = l
             .into_iter()
-            .map(|f| as_obsidian_link(f.as_events()))
-            .flatten()
+            .flat_map(|f| as_obsidian_link(f.as_events()))
             .collect();
 
         Some(Self { title, tags, items })
