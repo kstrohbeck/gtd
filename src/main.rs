@@ -40,19 +40,12 @@ struct Validate {}
 fn main() {
     let gtd: Gtd = argh::from_env();
     let cur_dir = env::current_dir().unwrap();
-    let atom_dir = cur_dir.join("Atoms");
-
-    let project_list_path = cur_dir.join("Projects.md");
-    let project_list_text = fs::read_to_string(project_list_path).unwrap();
-    let project_list = ProjectList::parse(&project_list_text).unwrap();
-
-    let someday_list_path = cur_dir.join("Someday.md");
-    let someday_list_text = fs::read_to_string(someday_list_path).unwrap();
-    let someday_list = SomedayList::parse(&someday_list_text).unwrap();
 
     match gtd.subcommand {
         Subcommand::Orphaned(_o) => {
             let mut found_orphans = false;
+            let docs = Documents::load(&cur_dir);
+            let atom_dir = cur_dir.join("Atoms");
 
             let atoms = fs::read_dir(&atom_dir).unwrap();
             for entry in atoms {
@@ -75,8 +68,8 @@ fn main() {
                 let project_filename = path.file_stem().and_then(OsStr::to_str).unwrap();
 
                 if project.tags.iter().any(|t| t == COMPLETE_TAG)
-                    || project_list.contains(project_filename)
-                    || someday_list.contains(project_filename)
+                    || docs.project_list.contains(project_filename)
+                    || docs.someday_list.contains(project_filename)
                 {
                     continue;
                 }
@@ -90,13 +83,10 @@ fn main() {
         }
 
         Subcommand::Validate(_v) => {
-            let action_list = load_action_list(&cur_dir);
-            let project_list = load_project_list(&cur_dir);
-            let someday_list = load_someday_list(&cur_dir);
-            let projects = load_projects(&cur_dir).collect::<Vec<_>>();
+            let docs = Documents::load(&cur_dir);
             let mut ids = HashSet::new();
 
-            for (filename, project) in &projects {
+            for (filename, project) in &docs.projects {
                 let space_idx =
                     filename
                         .char_indices()
@@ -132,16 +122,16 @@ fn main() {
                 }
 
                 if project.tags.iter().any(|s| s == "complete") {
-                    if project_list.contains(filename) {
+                    if docs.project_list.contains(filename) {
                         println!("{} is marked complete but is in the project list", filename);
                     }
 
-                    if someday_list.contains(filename) {
+                    if docs.someday_list.contains(filename) {
                         println!("{} is marked complete but is in the someday list", filename);
                     }
                 }
 
-                if project_list.contains(filename) && someday_list.contains(filename) {
+                if docs.project_list.contains(filename) && docs.someday_list.contains(filename) {
                     println!(
                         "{} is in both the project list and the someday list",
                         filename
@@ -155,25 +145,35 @@ fn main() {
                 }
             }
 
-            for context in &action_list.contexts {
+            for context in &docs.action_list.contexts {
                 for action in &context.actions {}
             }
+        }
+    }
+}
 
-            // Check if any projects are orphaned.
-            // Check if every project in the project list has at least one action in the action list.
-            // Check if any action in the action list has a project that isn't in the project list.
-            // Check if any link (in the action/projects/someday lists) doesn't point to a valid project.
-            // Check if projects list contains more than one reference to the same project.
-            // Check if someday list contains more than one reference to the same project.
-            // Check if action list contains more than one copy of the same action.
-            // If an action in the action list links to a project, make sure that project has that action and it is unchecked.
-            // Check if any completed project has actions that are unchecked.
+#[derive(Debug)]
+struct Documents {
+    action_list: ActionList,
+    project_list: ProjectList,
+    someday_list: SomedayList,
+    projects: Vec<(String, Project)>,
+}
+
+impl Documents {
+    fn load<P: AsRef<Path>>(cur_dir: P) -> Self {
+        let cur_dir = cur_dir.as_ref();
+        Self {
+            action_list: load_action_list(cur_dir),
+            project_list: load_project_list(cur_dir),
+            someday_list: load_someday_list(cur_dir),
+            projects: load_projects(cur_dir).collect(),
         }
     }
 }
 
 fn load_action_list<P: AsRef<Path>>(cur_dir: P) -> ActionList {
-    let path = cur_dir.as_ref().join("Action Items.md");
+    let path = cur_dir.as_ref().join("Next Actions.md");
     let text = fs::read_to_string(&path).unwrap();
     ActionList::parse(&text).unwrap()
 }

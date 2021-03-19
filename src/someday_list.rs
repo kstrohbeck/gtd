@@ -1,6 +1,7 @@
 use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, Fragment};
 use pulldown_cmark::{CowStr, Options, Parser};
 
+#[derive(Debug, Clone)]
 pub struct SomedayList {
     pub title: Fragment,
     pub tags: Vec<String>,
