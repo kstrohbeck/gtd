@@ -47,6 +47,15 @@ pub enum Item {
     Simple(Fragment),
 }
 
+impl Item {
+    pub fn link(&self) -> Option<&str> {
+        match self {
+            Item::Project(p) => Some(p),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

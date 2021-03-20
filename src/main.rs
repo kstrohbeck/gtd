@@ -1,17 +1,14 @@
 use self::action_list::ActionList;
-use self::project::Project;
 use self::project_list::ProjectList;
 use self::someday_list::SomedayList;
 use argh::FromArgs;
-use std::{collections::HashSet, convert::AsRef, env, ffi::OsStr, fs, path::Path};
+use std::{collections::HashSet, convert::AsRef, env, ffi::OsStr, fmt, fs, path::Path};
 
 mod action_list;
 mod markdown;
 mod project;
 mod project_list;
 mod someday_list;
-
-const COMPLETE_TAG: &str = "complete";
 
 /// Task management application.
 #[derive(Debug, FromArgs)]
@@ -23,14 +20,8 @@ struct Gtd {
 #[derive(Debug, FromArgs)]
 #[argh(subcommand)]
 enum Subcommand {
-    Orphaned(Orphaned),
     Validate(Validate),
 }
-
-/// List orphaned projects.
-#[derive(Debug, FromArgs)]
-#[argh(subcommand, name = "orphaned")]
-struct Orphaned {}
 
 /// Validates all projects and lists.
 #[derive(Debug, FromArgs)]
@@ -42,111 +33,189 @@ fn main() {
     let cur_dir = env::current_dir().unwrap();
 
     match gtd.subcommand {
-        Subcommand::Orphaned(_o) => {
-            let mut found_orphans = false;
-            let docs = Documents::load(&cur_dir);
-            let atom_dir = cur_dir.join("Atoms");
-
-            let atoms = fs::read_dir(&atom_dir).unwrap();
-            for entry in atoms {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                if path.is_dir() {
-                    continue;
-                }
-
-                let text = match fs::read_to_string(&path) {
-                    Ok(t) => t,
-                    Err(_) => continue,
-                };
-
-                let project = match Project::parse(&text) {
-                    Some(p) => p,
-                    None => continue,
-                };
-
-                let project_filename = path.file_stem().and_then(OsStr::to_str).unwrap();
-
-                if project.tags.iter().any(|t| t == COMPLETE_TAG)
-                    || docs.project_list.contains(project_filename)
-                    || docs.someday_list.contains(project_filename)
-                {
-                    continue;
-                }
-
-                println!("- {}", project_filename);
-                found_orphans = true;
-            }
-            if !found_orphans {
-                println!("No orphaned projects found.");
-            }
-        }
-
         Subcommand::Validate(_v) => {
+            fn validate_project<'a>(
+                project: &'a Project,
+                docs: &'a Documents,
+                ids: &mut HashSet<&'a str>,
+            ) {
+                fn validate_id<'a>(
+                    project: &'a Project,
+                    ids: &mut HashSet<&'a str>,
+                ) -> Result<(), String> {
+                    let id = project
+                        .id()
+                        .ok_or_else(|| format!("{} has an invalid ID", project))?;
+
+                    if !ids.insert(id) {
+                        return Err(format!("{} has a duplicate ID", project));
+                    }
+
+                    Ok(())
+                }
+
+                fn validate_title(project: &Project) -> Result<(), String> {
+                    let name_title = project
+                        .title()
+                        .ok_or_else(|| format!("{} has an invalid title in its name", project))?;
+
+                    let body_title =
+                        project.data.title.try_as_title_string().ok_or_else(|| {
+                            format!("{} has an invalid title in its body", project)
+                        })?;
+
+                    if name_title != body_title {
+                        return Err(format!("{}'s name and body title don't match", project));
+                    }
+
+                    Ok(())
+                }
+
+                fn verify_project_is_in_exactly_one_state(
+                    project: &Project,
+                    project_list: &ProjectList,
+                    someday_list: &SomedayList,
+                ) -> Result<(), String> {
+                    let is_in_project_list = project_list.contains(&project.name);
+                    let is_in_someday_list = someday_list.contains(&project.name);
+
+                    match (
+                        is_in_project_list,
+                        is_in_someday_list,
+                        project.is_complete(),
+                    ) {
+                        (false, false, false) => Err(format!(
+                            "{} is not marked complete and is not in the project or someday lists",
+                            project
+                        )),
+                        (false, true, true) => Err(format!(
+                            "{} is marked complete but is in the someday list",
+                            project
+                        )),
+                        (true, false, true) => Err(format!(
+                            "{} is marked complete but is in the project list",
+                            project
+                        )),
+                        (true, true, false) => Err(format!(
+                            "{} is in both the project and someday lists",
+                            project
+                        )),
+                        (true, true, true) => Err(format!(
+                            "{} is marked complete but is in both the project and someday lists",
+                            project
+                        )),
+                        _ => Ok(()),
+                    }
+                }
+
+                fn verify_all_actions_complete(project: &Project) -> Result<(), String> {
+                    let are_all_actions_complete = project.data.actions.iter().all(|(x, _)| *x);
+                    if project.is_complete() && !are_all_actions_complete {
+                        Err(format!(
+                            "{} is marked complete but has at least one uncompleted action",
+                            project
+                        ))
+                    } else {
+                        Ok(())
+                    }
+                }
+
+                let validations = vec![
+                    validate_id(project, ids),
+                    validate_title(project),
+                    verify_project_is_in_exactly_one_state(
+                        project,
+                        &docs.project_list,
+                        &docs.someday_list,
+                    ),
+                    verify_all_actions_complete(project),
+                ];
+
+                for err in validations.into_iter().filter_map(|x| x.err()) {
+                    println!("{}", err);
+                }
+            }
+
             let docs = Documents::load(&cur_dir);
+            let mut project_links = HashSet::new();
             let mut ids = HashSet::new();
 
-            for (filename, project) in &docs.projects {
-                let space_idx =
-                    filename
-                        .char_indices()
-                        .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
+            for project in &docs.projects {
+                project_links.insert(project.name.as_str());
+                validate_project(project, &docs, &mut ids);
+            }
 
-                let space_idx = match space_idx {
-                    Some(i) => i,
-                    None => {
-                        println!("{} is not a valid filename", filename);
-                        continue;
-                    }
-                };
+            let mut project_list_links = HashSet::new();
 
-                let id = &filename[..space_idx];
-                let name = &filename[space_idx + 1..];
+            for link in &docs.project_list.items {
+                let link = link as &str;
 
-                if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
-                    println!("{} does not have a valid ID", name);
-                }
-
-                let title = match project.title.try_as_title_string() {
-                    Some(t) => t,
-                    None => {
-                        println!("{} has an invalid title header", filename);
-                        continue;
-                    }
-                };
-
-                if name != title {
-                    println!("{}'s name and title header don't match", filename);
-                    println!("  - name:  {}", name);
-                    println!("  - title: {}", title);
-                }
-
-                if project.tags.iter().any(|s| s == "complete") {
-                    if docs.project_list.contains(filename) {
-                        println!("{} is marked complete but is in the project list", filename);
+                if let Some(project) = docs.projects.iter().find(|p| p.name == link) {
+                    let mut has_active_action = false;
+                    for action in project.data.actions.iter().map(|(_, f)| f) {
+                        for ctx in &docs.action_list.contexts {
+                            for act in &ctx.actions {
+                                if action == &act.text {
+                                    has_active_action = true;
+                                }
+                            }
+                        }
                     }
 
-                    if docs.someday_list.contains(filename) {
-                        println!("{} is marked complete but is in the someday list", filename);
+                    if !has_active_action {
+                        println!(
+                            "{} is in project list but has no actions in action list",
+                            project
+                        );
                     }
-                }
-
-                if docs.project_list.contains(filename) && docs.someday_list.contains(filename) {
-                    println!(
-                        "{} is in both the project list and the someday list",
-                        filename
-                    );
-                }
-
-                if ids.contains(id) {
-                    println!("{} has a duplicate ID", filename);
                 } else {
-                    ids.insert(id);
+                    println!("{} is an invalid link in the project list", link);
+                }
+
+                if !project_list_links.insert(link) {
+                    println!("{} is duplicated in the project list", link);
+                }
+            }
+
+            let mut someday_list_links = HashSet::new();
+
+            for link in docs.someday_list.items.iter().filter_map(|i| i.link()) {
+                if !project_links.contains(link) {
+                    println!("{} is an invalid link in the someday list", link);
+                }
+
+                if !someday_list_links.insert(link) {
+                    println!("{} is duplicated in the someday list", link);
                 }
             }
 
             for context in &docs.action_list.contexts {
-                for action in &context.actions {}
+                for action in &context.actions {
+                    if let Some(link) = &action.project {
+                        let link = link as &str;
+                        if let Some(project) = docs.projects.iter().find(|p| p.name == link) {
+                            if !docs.project_list.contains(link) {
+                                println!("{} is referenced in the action list but is not in the project list", link);
+                            }
+
+                            let mut has_action = false;
+                            for (done, act) in &project.data.actions {
+                                if &action.text == act {
+                                    has_action = true;
+                                    if *done {
+                                        println!("{} has an action marked as done that is in the action list", link);
+                                    }
+                                }
+                            }
+
+                            if !has_action {
+                                println!("{} is referenced in the action list but does not have the referencing action", link);
+                            }
+                        } else {
+                            println!("{} is not a valid link to project in action list", link);
+                        }
+                    }
+                }
             }
         }
     }
@@ -157,11 +226,45 @@ struct Documents {
     action_list: ActionList,
     project_list: ProjectList,
     someday_list: SomedayList,
-    projects: Vec<(String, Project)>,
+    projects: Vec<Project>,
 }
 
 impl Documents {
     fn load<P: AsRef<Path>>(cur_dir: P) -> Self {
+        fn load_action_list<P: AsRef<Path>>(cur_dir: P) -> ActionList {
+            let path = cur_dir.as_ref().join("Next Actions.md");
+            let text = fs::read_to_string(&path).unwrap();
+            ActionList::parse(&text).unwrap()
+        }
+
+        fn load_project_list<P: AsRef<Path>>(cur_dir: P) -> ProjectList {
+            let path = cur_dir.as_ref().join("Projects.md");
+            let text = fs::read_to_string(&path).unwrap();
+            ProjectList::parse(&text).unwrap()
+        }
+
+        fn load_someday_list<P: AsRef<Path>>(cur_dir: P) -> SomedayList {
+            let path = cur_dir.as_ref().join("Someday.md");
+            let text = fs::read_to_string(&path).unwrap();
+            SomedayList::parse(&text).unwrap()
+        }
+
+        fn load_projects<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = Project> {
+            let atom_dir = cur_dir.as_ref().join("Atoms");
+            fs::read_dir(&atom_dir).unwrap().flat_map(|e| {
+                let path = e.ok()?.path();
+                if path.is_dir() {
+                    return None;
+                }
+
+                let text = fs::read_to_string(&path).ok()?;
+                let data = project::Project::parse(&text)?;
+                let name = path.file_stem()?.to_str()?.to_string();
+
+                Some(Project::new(name, data))
+            })
+        }
+
         let cur_dir = cur_dir.as_ref();
         Self {
             action_list: load_action_list(cur_dir),
@@ -172,36 +275,47 @@ impl Documents {
     }
 }
 
-fn load_action_list<P: AsRef<Path>>(cur_dir: P) -> ActionList {
-    let path = cur_dir.as_ref().join("Next Actions.md");
-    let text = fs::read_to_string(&path).unwrap();
-    ActionList::parse(&text).unwrap()
+#[derive(Debug, Clone)]
+struct Project {
+    name: String,
+    name_split_idx: Option<usize>,
+    data: project::Project,
 }
 
-fn load_project_list<P: AsRef<Path>>(cur_dir: P) -> ProjectList {
-    let path = cur_dir.as_ref().join("Projects.md");
-    let text = fs::read_to_string(&path).unwrap();
-    ProjectList::parse(&text).unwrap()
-}
+impl Project {
+    const COMPLETE_TAG: &'static str = "complete";
 
-fn load_someday_list<P: AsRef<Path>>(cur_dir: P) -> SomedayList {
-    let path = cur_dir.as_ref().join("Someday.md");
-    let text = fs::read_to_string(&path).unwrap();
-    SomedayList::parse(&text).unwrap()
-}
+    fn new(name: String, data: project::Project) -> Self {
+        let name_split_idx = name
+            .char_indices()
+            .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
+        Self {
+            name,
+            name_split_idx,
+            data,
+        }
+    }
 
-fn load_projects<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = (String, Project)> {
-    let atom_dir = cur_dir.as_ref().join("Atoms");
-    fs::read_dir(&atom_dir).unwrap().flat_map(|e| {
-        let path = e.ok()?.path();
-        if path.is_dir() {
+    fn id(&self) -> Option<&str> {
+        let idx = self.name_split_idx?;
+        let id = self.name.get(..idx)?;
+        if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
             return None;
         }
+        Some(id)
+    }
 
-        let text = fs::read_to_string(&path).ok()?;
-        let project = Project::parse(&text)?;
-        let proj_name = path.file_stem()?.to_str()?.to_string();
+    fn title(&self) -> Option<&str> {
+        self.name_split_idx.and_then(|idx| self.name.get(idx + 1..))
+    }
 
-        Some((proj_name, project))
-    })
+    fn is_complete(&self) -> bool {
+        self.data.tags.iter().any(|s| s == Self::COMPLETE_TAG)
+    }
+}
+
+impl fmt::Display for Project {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }

@@ -9,7 +9,7 @@ pub struct Project {
     pub tags: Vec<String>,
     pub goal: Option<Fragment>,
     pub info: Option<Fragment>,
-    pub actions: Option<Vec<(bool, Fragment)>>,
+    pub actions: Vec<(bool, Fragment)>,
 }
 
 impl Project {
@@ -45,7 +45,7 @@ impl Project {
             tags,
             goal,
             info,
-            actions,
+            actions: actions.unwrap_or_else(Vec::new),
         })
     }
 }
@@ -170,7 +170,7 @@ mod tests {
         let project = Project::parse(project_str).unwrap();
         assert_eq!(
             project.actions,
-            Some(vec![
+            vec![
                 (
                     true,
                     Fragment::from_events(vec![Event::Text("First action".into())])
@@ -179,7 +179,7 @@ mod tests {
                     false,
                     Fragment::from_events(vec![Event::Text("Second action".into())])
                 ),
-            ]),
+            ],
         );
     }
 
@@ -209,7 +209,7 @@ mod tests {
 
         assert_eq!(
             project.actions,
-            Some(vec![
+            vec![
                 (
                     true,
                     Fragment::from_events(vec![Event::Text("First action".into())])
@@ -218,7 +218,7 @@ mod tests {
                     false,
                     Fragment::from_events(vec![Event::Text("Second action".into())])
                 ),
-            ]),
+            ],
         );
     }
 }

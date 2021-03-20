@@ -89,6 +89,21 @@ impl Fragment {
     }
 }
 
+pub fn try_parse_event<'a, I>(parser: &mut Peekable<I>, req: Event<'a>) -> Option<Event<'a>>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    if let Some(ev) = parser.peek() {
+        if ev == &req {
+            parser.next()
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 pub fn parse_event<'a, I>(mut parser: I, req: Event<'a>) -> Option<Event<'a>>
 where
     I: Iterator<Item = Event<'a>>,
@@ -128,6 +143,15 @@ where
     parse_event(&mut parser, Event::Start(Tag::Heading(heading)))?;
     let frag = parse_until_incl(&mut parser, Event::End(Tag::Heading(heading)));
     Some(frag)
+}
+
+pub fn try_parse_list<'a, I>(mut parser: &mut Peekable<I>) -> Option<Vec<Fragment>>
+where
+    I: Iterator<Item = Event<'a>>,
+{
+    try_parse_event(&mut parser, Event::Start(Tag::List(None)))?;
+    let items = std::iter::from_fn(|| parse_item(&mut parser)).collect();
+    Some(items)
 }
 
 pub fn parse_list<'a, I>(mut parser: I) -> Option<Vec<Fragment>>

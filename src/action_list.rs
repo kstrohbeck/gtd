@@ -1,5 +1,6 @@
-use crate::markdown::{as_obsidian_link, parse_heading, parse_list, parse_tags, Fragment};
+use crate::markdown::{as_obsidian_link, parse_heading, parse_tags, try_parse_list, Fragment};
 use pulldown_cmark::{CowStr, Event, Options, Parser};
+use std::iter::Peekable;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionList {
@@ -12,7 +13,7 @@ impl ActionList {
     pub fn parse(text: &str) -> Option<Self> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options);
+        let mut parser = Parser::new_ext(text, options).peekable();
 
         let title = parse_heading(&mut parser, 1)?;
         let tags = parse_tags(&mut parser)?;
@@ -37,12 +38,12 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn parse<'a, I>(mut parser: I) -> Option<Self>
+    pub fn parse<'a, I>(mut parser: &mut Peekable<I>) -> Option<Self>
     where
         I: Iterator<Item = Event<'a>>,
     {
         let title = parse_heading(&mut parser, 2)?;
-        let list = parse_list(&mut parser).unwrap_or(vec![]);
+        let list = try_parse_list(&mut parser).unwrap_or(vec![]);
         let actions = list.into_iter().map(Action::from_fragment).collect();
 
         Some(Self { title, actions })
@@ -147,6 +148,41 @@ mod tests {
                             project: Some(CowStr::Borrowed("quux")),
                         },
                     ],
+                },
+                Context {
+                    title: Fragment::from_events(vec![Event::Text("@thing".into())]),
+                    actions: vec![Action {
+                        text: Fragment::from_events(vec![Event::Text("stuff".into()),]),
+                        project: None,
+                    },],
+                }
+            ],
+        );
+    }
+
+    #[test]
+    fn empty_contexts_parse() {
+        let text = "# Next Actions\n#gtd\n\n## @foo\n\n- bar\n- baz\n  [[quux]]\n\n## @empty\n\n## @thing\n\n- stuff\n";
+        let action_list = ActionList::parse(text).unwrap();
+        assert_eq!(
+            action_list.contexts,
+            vec![
+                Context {
+                    title: Fragment::from_events(vec![Event::Text("@foo".into())]),
+                    actions: vec![
+                        Action {
+                            text: Fragment::from_events(vec![Event::Text("bar".into()),]),
+                            project: None,
+                        },
+                        Action {
+                            text: Fragment::from_events(vec![Event::Text("baz".into()),]),
+                            project: Some(CowStr::Borrowed("quux")),
+                        },
+                    ],
+                },
+                Context {
+                    title: Fragment::from_events(vec![Event::Text("@empty".into())]),
+                    actions: vec![],
                 },
                 Context {
                     title: Fragment::from_events(vec![Event::Text("@thing".into())]),
