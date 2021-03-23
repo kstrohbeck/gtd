@@ -2,7 +2,7 @@ use self::action_list::ActionList;
 use self::project_list::ProjectList;
 use self::someday_list::SomedayList;
 use argh::FromArgs;
-use std::{collections::HashSet, convert::AsRef, env, ffi::OsStr, fmt, fs, path::Path};
+use std::{collections::HashSet, convert::AsRef, env, fmt, fs, path::Path};
 
 mod action_list;
 mod markdown;

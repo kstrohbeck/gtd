@@ -39,7 +39,7 @@ pub struct Context {
 impl Context {
     pub fn parse(parser: &mut Parser) -> Option<Self> {
         let title = parser.parse_heading(2)?;
-        let list = parser.parse_list().unwrap_or(vec![]);
+        let list = parser.parse_list().unwrap_or_else(Vec::new);
         let actions = list.into_iter().map(Action::from_fragment).collect();
 
         Some(Self { title, actions })
