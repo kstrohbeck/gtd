@@ -4,10 +4,10 @@ A command line application that automates handling of common GTD tasks.
 
 ## Commands
 
-### `orphaned`
+### `validate`
 
 ```
-gtd orphaned
+gtd validate
 ```
 
-The `orphaned` command lists all orphaned projects - projects that aren't tagged as `#complete` and aren't in the Projects or Someday list.
+The `validate` command lists all the inconsistencies in the current GTD folder.
