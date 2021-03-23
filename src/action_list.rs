@@ -1,6 +1,5 @@
-use crate::markdown::{as_obsidian_link, parse_heading, parse_tags, try_parse_list, Fragment};
-use pulldown_cmark::{CowStr, Event, Options, Parser};
-use std::iter::Peekable;
+use crate::markdown::{as_obsidian_link, Fragment, Parser};
+use pulldown_cmark::{CowStr, Event, Options};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionList {
@@ -13,10 +12,10 @@ impl ActionList {
     pub fn parse(text: &str) -> Option<Self> {
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options).peekable();
+        let mut parser = Parser::new_ext(text, options);
 
-        let title = parse_heading(&mut parser, 1)?;
-        let tags = parse_tags(&mut parser)?;
+        let title = parser.parse_heading(1)?;
+        let tags = parser.parse_tags()?;
 
         let mut contexts = vec![];
         while let Some(context) = Context::parse(&mut parser) {
@@ -38,12 +37,9 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn parse<'a, I>(mut parser: &mut Peekable<I>) -> Option<Self>
-    where
-        I: Iterator<Item = Event<'a>>,
-    {
-        let title = parse_heading(&mut parser, 2)?;
-        let list = try_parse_list(&mut parser).unwrap_or(vec![]);
+    pub fn parse(parser: &mut Parser) -> Option<Self> {
+        let title = parser.parse_heading(2)?;
+        let list = parser.parse_list().unwrap_or(vec![]);
         let actions = list.into_iter().map(Action::from_fragment).collect();
 
         Some(Self { title, actions })

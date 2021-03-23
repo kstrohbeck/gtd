@@ -1,5 +1,5 @@
-use crate::markdown::{parse_heading, parse_tasklist, parse_until, Fragment};
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use crate::markdown::{Fragment, Parser};
+use pulldown_cmark::{Event, Options, Tag};
 
 const GTD_PROJECT_TAG: &str = "gtd-project";
 
@@ -19,23 +19,21 @@ impl Project {
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let mut parser = Parser::new_ext(text, options);
 
-        let title = parse_heading(&mut parser, 1)?;
+        let title = parser.parse_heading(1)?;
         let tags = parse_tags(&mut parser)?;
-
-        let mut parser = parser.peekable();
 
         let mut goal = None;
         let mut info = None;
         let mut actions = None;
 
         while parser.peek().is_some() {
-            let heading = parse_heading(&mut parser, 2)?;
+            let heading = parser.parse_heading(2)?;
             let title = heading.try_as_str()?;
 
             match &*title {
-                "Goal" => goal = Some(parse_until(&mut parser, Event::Start(Tag::Heading(2)))),
-                "Info" => info = Some(parse_until(&mut parser, Event::Start(Tag::Heading(2)))),
-                "Actions" | "Action Items" => actions = parse_tasklist(&mut parser),
+                "Goal" => goal = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
+                "Info" => info = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
+                "Actions" | "Action Items" => actions = parser.parse_tasklist(),
                 _ => return None,
             }
         }
@@ -52,9 +50,7 @@ impl Project {
 
 // TODO: Should return borrowed, and also error if gtd-project isn't found.
 fn parse_tags(mut parser: &mut Parser) -> Option<Vec<String>> {
-    use crate::markdown::parse_tags;
-
-    let mut tags = parse_tags(&mut parser)?;
+    let mut tags = parser.parse_tags()?;
 
     tags.iter().position(|s| s == GTD_PROJECT_TAG).map(|idx| {
         tags.remove(idx);
