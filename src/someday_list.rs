@@ -1,9 +1,9 @@
-use crate::markdown::{as_obsidian_link, Fragment, Parser};
+use crate::markdown::{as_obsidian_link, Fragment, Heading, Parser};
 use pulldown_cmark::{CowStr, Options};
 
 #[derive(Debug, Clone)]
 pub struct SomedayList {
-    pub title: Fragment,
+    pub title: Heading,
     pub tags: Vec<String>,
     pub items: Vec<Item>,
 }
@@ -59,6 +59,7 @@ impl Item {
 mod tests {
     use super::*;
     use pulldown_cmark::Event;
+    use std::convert::TryInto;
 
     #[test]
     fn title_parses() {
@@ -67,6 +68,8 @@ mod tests {
         assert_eq!(
             someday_list.title,
             Fragment::from_events(vec![Event::Text("Someday".into())])
+                .try_into()
+                .unwrap()
         );
     }
 

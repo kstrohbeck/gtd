@@ -1,5 +1,10 @@
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, Options, Parser as MarkdownParser, Tag};
-use std::iter::Peekable;
+use pulldown_cmark::{
+    CodeBlockKind, CowStr, Event, LinkType, Options, Parser as MarkdownParser, Tag,
+};
+use std::{
+    convert::{TryFrom, TryInto},
+    iter::Peekable,
+};
 
 pub fn cow_str_static<'a>(cow: CowStr<'a>) -> CowStr<'static> {
     match cow {
@@ -63,11 +68,16 @@ impl Fragment {
     pub fn as_events(&self) -> &[Event<'static>] {
         &self.0[..]
     }
+}
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct Heading(Vec<HeadingEvent<'static>>);
+
+impl Heading {
     pub fn try_as_str(&self) -> Option<&str> {
         if self.0.len() == 1 {
             match &self.0[0] {
-                Event::Text(t) => Some(&*t),
+                HeadingEvent::Text(t) => Some(&*t),
                 _ => None,
             }
         } else {
@@ -80,12 +90,76 @@ impl Fragment {
 
         for ev in &self.0 {
             match ev {
-                Event::Text(t) | Event::Code(t) => s.push_str(t),
+                HeadingEvent::Text(t) | HeadingEvent::Code(t) => s.push_str(t),
                 _ => return None,
             }
         }
 
         Some(s)
+    }
+}
+
+impl TryFrom<Fragment> for Heading {
+    type Error = ();
+
+    fn try_from(mut fragment: Fragment) -> Result<Self, Self::Error> {
+        Ok(Heading(
+            fragment
+                .0
+                .drain(..)
+                .map(HeadingEvent::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HeadingEvent<'a> {
+    Start(HeadingTag<'a>),
+    End(HeadingTag<'a>),
+    Text(CowStr<'a>),
+    Code(CowStr<'a>),
+    Html(CowStr<'a>),
+    FootnoteReference(CowStr<'a>),
+}
+
+impl<'a> TryFrom<Event<'a>> for HeadingEvent<'a> {
+    type Error = ();
+
+    fn try_from(event: Event<'a>) -> Result<Self, Self::Error> {
+        match event {
+            Event::Start(t) => t.try_into().map(Self::Start),
+            Event::End(t) => t.try_into().map(Self::End),
+            Event::Text(s) => Ok(Self::Text(s)),
+            Event::Code(s) => Ok(Self::Code(s)),
+            Event::Html(s) => Ok(Self::Html(s)),
+            Event::FootnoteReference(s) => Ok(Self::FootnoteReference(s)),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HeadingTag<'a> {
+    Emphasis,
+    Strong,
+    Strikethrough,
+    Link(LinkType, CowStr<'a>, CowStr<'a>),
+    Image(LinkType, CowStr<'a>, CowStr<'a>),
+}
+
+impl<'a> TryFrom<Tag<'a>> for HeadingTag<'a> {
+    type Error = ();
+
+    fn try_from(tag: Tag<'a>) -> Result<Self, Self::Error> {
+        match tag {
+            Tag::Emphasis => Ok(Self::Emphasis),
+            Tag::Strong => Ok(Self::Strong),
+            Tag::Strikethrough => Ok(Self::Strikethrough),
+            Tag::Link(ty, a, b) => Ok(Self::Link(ty, a, b)),
+            Tag::Image(ty, a, b) => Ok(Self::Image(ty, a, b)),
+            _ => Err(()),
+        }
     }
 }
 
@@ -159,10 +233,11 @@ impl<'a> Parser<'a> {
         self.parse_element_opt(tag, |p| Some(func(p)))
     }
 
-    pub fn parse_heading(&mut self, heading: u32) -> Option<Fragment> {
+    pub fn parse_heading(&mut self, heading: u32) -> Option<Heading> {
         self.parse_element(Tag::Heading(heading), |p| {
             p.parse_until(Event::End(Tag::Heading(heading)))
         })
+        .and_then(|frag| frag.try_into().ok())
     }
 
     pub fn parse_list(&mut self) -> Option<Vec<Fragment>> {
@@ -247,7 +322,7 @@ pub fn as_obsidian_link<'a>(v: &[Event<'a>]) -> Option<CowStr<'a>> {
 mod tests {
     use super::*;
 
-    mod fragment {
+    mod heading {
         use super::*;
 
         mod try_as_title_string {
@@ -255,12 +330,13 @@ mod tests {
 
             #[test]
             fn code_text_is_concatenated() {
-                let fragment = Fragment::from_events(vec![
-                    Event::Text("Foo ".into()),
-                    Event::Code("bar".into()),
-                    Event::Text(" baz".into()),
+                let heading = Heading(vec![
+                    HeadingEvent::Text("Foo ".into()),
+                    HeadingEvent::Code("bar".into()),
+                    HeadingEvent::Text(" baz".into()),
                 ]);
-                let title = fragment.try_as_title_string();
+
+                let title = heading.try_as_title_string();
                 assert_eq!(title, Some(String::from("Foo bar baz")));
             }
         }
@@ -329,7 +405,7 @@ mod tests {
                 let heading = parser.parse_heading(1);
                 assert_eq!(
                     heading,
-                    Some(Fragment(vec![Event::Text("Heading text".into())]))
+                    Some(Heading(vec![HeadingEvent::Text("Heading text".into())]))
                 );
             }
 
@@ -340,10 +416,10 @@ mod tests {
                 let heading = parser.parse_heading(1);
                 assert_eq!(
                     heading,
-                    Some(Fragment(vec![
-                        Event::Text("Heading ".into()),
-                        Event::Code("complex".into()),
-                        Event::Text(" text".into()),
+                    Some(Heading(vec![
+                        HeadingEvent::Text("Heading ".into()),
+                        HeadingEvent::Code("complex".into()),
+                        HeadingEvent::Text(" text".into()),
                     ]))
                 );
             }
@@ -355,7 +431,7 @@ mod tests {
                 let heading = parser.parse_heading(2);
                 assert_eq!(
                     heading,
-                    Some(Fragment(vec![Event::Text("Heading text".into())]))
+                    Some(Heading(vec![HeadingEvent::Text("Heading text".into())]))
                 );
             }
         }

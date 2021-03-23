@@ -1,11 +1,11 @@
-use crate::markdown::{Fragment, Parser};
+use crate::markdown::{Fragment, Heading, Parser};
 use pulldown_cmark::{Event, Options, Tag};
 
 const GTD_PROJECT_TAG: &str = "gtd-project";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
-    pub title: Fragment,
+    pub title: Heading,
     pub tags: Vec<String>,
     pub goal: Option<Fragment>,
     pub info: Option<Fragment>,
@@ -54,6 +54,7 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryInto;
 
     #[test]
     fn basic_project_parses() {
@@ -76,6 +77,8 @@ mod tests {
         assert_eq!(
             project.title,
             Fragment::from_events(vec![Event::Text("Project title".into())])
+                .try_into()
+                .unwrap()
         );
     }
 
@@ -89,6 +92,8 @@ mod tests {
                 Event::Text("Title with ".into()),
                 Event::Code("code".into()),
             ])
+            .try_into()
+            .unwrap()
         );
     }
 

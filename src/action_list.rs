@@ -1,9 +1,9 @@
-use crate::markdown::{as_obsidian_link, Fragment, Parser};
+use crate::markdown::{as_obsidian_link, Fragment, Heading, Parser};
 use pulldown_cmark::{CowStr, Event, Options};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionList {
-    pub title: Fragment,
+    pub title: Heading,
     pub tags: Vec<String>,
     pub contexts: Vec<Context>,
 }
@@ -32,7 +32,7 @@ impl ActionList {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Context {
-    pub title: Fragment,
+    pub title: Heading,
     pub actions: Vec<Action>,
 }
 
@@ -84,6 +84,7 @@ impl Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::convert::TryInto;
 
     #[test]
     fn title_parses() {
@@ -92,6 +93,8 @@ mod tests {
         assert_eq!(
             action_list.title,
             Fragment::from_events(vec![Event::Text("Next Actions".into())])
+                .try_into()
+                .unwrap()
         );
     }
 
@@ -109,7 +112,9 @@ mod tests {
         assert_eq!(
             action_list.contexts,
             vec![Context {
-                title: Fragment::from_events(vec![Event::Text("@foo".into())]),
+                title: Fragment::from_events(vec![Event::Text("@foo".into())])
+                    .try_into()
+                    .unwrap(),
                 actions: vec![
                     Action {
                         text: Fragment::from_events(vec![Event::Text("bar".into()),]),
@@ -133,7 +138,9 @@ mod tests {
             action_list.contexts,
             vec![
                 Context {
-                    title: Fragment::from_events(vec![Event::Text("@foo".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@foo".into())])
+                        .try_into()
+                        .unwrap(),
                     actions: vec![
                         Action {
                             text: Fragment::from_events(vec![Event::Text("bar".into()),]),
@@ -146,7 +153,9 @@ mod tests {
                     ],
                 },
                 Context {
-                    title: Fragment::from_events(vec![Event::Text("@thing".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@thing".into())])
+                        .try_into()
+                        .unwrap(),
                     actions: vec![Action {
                         text: Fragment::from_events(vec![Event::Text("stuff".into()),]),
                         project: None,
@@ -164,7 +173,9 @@ mod tests {
             action_list.contexts,
             vec![
                 Context {
-                    title: Fragment::from_events(vec![Event::Text("@foo".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@foo".into())])
+                        .try_into()
+                        .unwrap(),
                     actions: vec![
                         Action {
                             text: Fragment::from_events(vec![Event::Text("bar".into()),]),
@@ -177,11 +188,15 @@ mod tests {
                     ],
                 },
                 Context {
-                    title: Fragment::from_events(vec![Event::Text("@empty".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@empty".into())])
+                        .try_into()
+                        .unwrap(),
                     actions: vec![],
                 },
                 Context {
-                    title: Fragment::from_events(vec![Event::Text("@thing".into())]),
+                    title: Fragment::from_events(vec![Event::Text("@thing".into())])
+                        .try_into()
+                        .unwrap(),
                     actions: vec![Action {
                         text: Fragment::from_events(vec![Event::Text("stuff".into()),]),
                         project: None,

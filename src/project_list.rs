@@ -1,9 +1,9 @@
-use crate::markdown::{as_obsidian_link, Fragment, Parser};
+use crate::markdown::{as_obsidian_link, Heading, Parser};
 use pulldown_cmark::{CowStr, Options};
 
 #[derive(Debug, Clone)]
 pub struct ProjectList {
-    pub title: Fragment,
+    pub title: Heading,
     pub tags: Vec<String>,
     pub items: Vec<CowStr<'static>>,
 }
