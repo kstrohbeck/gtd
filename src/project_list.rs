@@ -16,9 +16,8 @@ impl ProjectList {
 
         let title = parser.parse_heading(1)?;
         let tags = parser.parse_tags()?;
-
-        let l = parser.parse_list()?;
-        let items = l
+        let items = parser
+            .parse_list()?
             .into_iter()
             .flat_map(|f| as_obsidian_link(f.as_events()))
             .collect();

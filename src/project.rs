@@ -20,7 +20,10 @@ impl Project {
         let mut parser = Parser::new_ext(text, options);
 
         let title = parser.parse_heading(1)?;
-        let tags = parse_tags(&mut parser)?;
+
+        let mut tags = parser.parse_tags()?;
+        let idx = tags.iter().position(|s| s == GTD_PROJECT_TAG)?;
+        tags.remove(idx);
 
         let mut goal = None;
         let mut info = None;
@@ -46,16 +49,6 @@ impl Project {
             actions: actions.unwrap_or_else(Vec::new),
         })
     }
-}
-
-// TODO: Should return borrowed, and also error if gtd-project isn't found.
-fn parse_tags(mut parser: &mut Parser) -> Option<Vec<String>> {
-    let mut tags = parser.parse_tags()?;
-
-    tags.iter().position(|s| s == GTD_PROJECT_TAG).map(|idx| {
-        tags.remove(idx);
-        tags
-    })
 }
 
 #[cfg(test)]

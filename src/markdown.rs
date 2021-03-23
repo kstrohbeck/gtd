@@ -108,9 +108,9 @@ impl<'a> Parser<'a> {
         self.parser.peek()
     }
 
-    pub fn parse_event(&mut self, req: Event<'a>) -> Option<Event<'a>> {
+    pub fn parse_event(&mut self, req: &Event<'a>) -> Option<Event<'a>> {
         if let Some(ev) = self.peek() {
-            if ev == &req {
+            if ev == req {
                 self.next()
             } else {
                 None
@@ -134,63 +134,76 @@ impl<'a> Parser<'a> {
         Fragment::from_events(frag)
     }
 
+    fn parse_start(&mut self, tag: Tag<'a>) -> Option<Event<'a>> {
+        self.parse_event(&Event::Start(tag))
+    }
+
+    fn parse_end(&mut self, tag: Tag<'a>) -> Option<Event<'a>> {
+        self.parse_event(&Event::End(tag))
+    }
+
+    fn parse_element_opt<F, T>(&mut self, tag: Tag<'a>, func: F) -> Option<T>
+    where
+        F: Fn(&mut Self) -> Option<T>,
+    {
+        self.parse_start(tag.clone())?;
+        let output = func(self)?;
+        self.parse_end(tag)?;
+        Some(output)
+    }
+
+    fn parse_element<F, T>(&mut self, tag: Tag<'a>, func: F) -> Option<T>
+    where
+        F: Fn(&mut Self) -> T,
+    {
+        self.parse_element_opt(tag, |p| Some(func(p)))
+    }
+
     pub fn parse_heading(&mut self, heading: u32) -> Option<Fragment> {
-        self.parse_event(Event::Start(Tag::Heading(heading)))?;
-        let frag = self.parse_until(Event::End(Tag::Heading(heading)));
-        self.parse_event(Event::End(Tag::Heading(heading)))?;
-        Some(frag)
+        self.parse_element(Tag::Heading(heading), |p| {
+            p.parse_until(Event::End(Tag::Heading(heading)))
+        })
     }
 
     pub fn parse_list(&mut self) -> Option<Vec<Fragment>> {
-        self.parse_event(Event::Start(Tag::List(None)))?;
-        let items = std::iter::from_fn(|| self.parse_item()).collect();
-        self.parse_event(Event::End(Tag::List(None)))?;
-        Some(items)
+        self.parse_element(Tag::List(None), |p| {
+            std::iter::from_fn(|| p.parse_item()).collect()
+        })
     }
 
-    pub fn parse_item(&mut self) -> Option<Fragment> {
-        self.parse_event(Event::Start(Tag::Item))?;
-        let frag = self.parse_until(Event::End(Tag::Item));
-        self.parse_event(Event::End(Tag::Item))?;
-        Some(frag)
+    fn parse_item(&mut self) -> Option<Fragment> {
+        self.parse_element(Tag::Item, |p| p.parse_until(Event::End(Tag::Item)))
     }
 
     pub fn parse_tasklist(&mut self) -> Option<Vec<(bool, Fragment)>> {
-        self.parse_event(Event::Start(Tag::List(None)))?;
-        let tasks = std::iter::from_fn(|| self.parse_task()).collect();
-        self.parse_event(Event::End(Tag::List(None)))?;
-        Some(tasks)
+        self.parse_element(Tag::List(None), |p| {
+            std::iter::from_fn(|| p.parse_task()).collect()
+        })
     }
 
-    pub fn parse_task(&mut self) -> Option<(bool, Fragment)> {
-        self.parse_event(Event::Start(Tag::Item))?;
+    fn parse_task(&mut self) -> Option<(bool, Fragment)> {
+        self.parse_element_opt(Tag::Item, |p| {
+            let b = match p.next()? {
+                Event::TaskListMarker(b) => b,
+                _ => return None,
+            };
 
-        let b = match self.parser.next()? {
-            Event::TaskListMarker(b) => b,
-            _ => return None,
-        };
-
-        let text = self.parse_until(Event::End(Tag::Item));
-        self.parse_event(Event::End(Tag::Item))?;
-
-        Some((b, text))
+            let text = p.parse_until(Event::End(Tag::Item));
+            Some((b, text))
+        })
     }
 
     pub fn parse_tags(&mut self) -> Option<Vec<String>> {
-        self.parse_event(Event::Start(Tag::Paragraph))?;
-        let tag_line = match self.parser.next()? {
-            Event::Text(t) => t,
-            _ => return None,
-        };
-        self.parse_event(Event::End(Tag::Paragraph))?;
-
-        let tags = tag_line
-            .split(' ')
-            .flat_map(|s| s.strip_prefix('#'))
-            .map(|s| s.to_string())
-            .collect();
-
-        Some(tags)
+        self.parse_element_opt(Tag::Paragraph, |p| match p.next()? {
+            Event::Text(t) => Some(t),
+            _ => None,
+        })
+        .map(|line| {
+            line.split(' ')
+                .flat_map(|s| s.strip_prefix('#'))
+                .map(|s| s.to_string())
+                .collect()
+        })
     }
 }
 
