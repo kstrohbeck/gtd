@@ -1,5 +1,6 @@
-use crate::markdown::{as_obsidian_link, Fragment, Heading, Parser};
-use pulldown_cmark::{CowStr, Options};
+use crate::markdown::{as_obsidian_link, Doc, Fragment, Heading};
+use crate::parser::ParseError;
+use pulldown_cmark::CowStr;
 
 #[derive(Debug, Clone)]
 pub struct SomedayList {
@@ -9,13 +10,13 @@ pub struct SomedayList {
 }
 
 impl SomedayList {
-    pub fn parse(text: &str) -> Option<Self> {
-        let options =
-            Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options);
+    pub fn parse(text: &str) -> Result<Self, ParseError> {
+        let Doc {
+            title,
+            tags,
+            mut parser,
+        } = Doc::parse(text)?;
 
-        let title = parser.parse_heading(1)?;
-        let tags = parser.parse_tags()?;
         let items = parser
             .parse_list()?
             .into_iter()
@@ -26,7 +27,7 @@ impl SomedayList {
             })
             .collect();
 
-        Some(Self { title, tags, items })
+        Ok(Self { title, tags, items })
     }
 
     pub fn contains(&self, link: &str) -> bool {

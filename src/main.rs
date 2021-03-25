@@ -7,6 +7,7 @@ use std::{collections::HashSet, convert::AsRef, env, fs, path::Path};
 
 mod action_list;
 mod markdown;
+mod parser;
 mod project;
 mod project_list;
 mod someday_list;
@@ -260,7 +261,7 @@ impl Documents {
 
                 let text = fs::read_to_string(&path).ok()?;
                 let name = path.file_stem()?.to_str()?.to_string();
-                Project::parse(name, &text)
+                Project::parse(name, &text).ok()
             })
         }
 

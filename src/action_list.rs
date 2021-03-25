@@ -1,5 +1,6 @@
-use crate::markdown::{as_obsidian_link, Fragment, Heading, Parser};
-use pulldown_cmark::{CowStr, Event, Options};
+use crate::markdown::{as_obsidian_link, Doc, Fragment, Heading};
+use crate::parser::{ParseError, Parser};
+use pulldown_cmark::{CowStr, Event};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionList {
@@ -9,20 +10,19 @@ pub struct ActionList {
 }
 
 impl ActionList {
-    pub fn parse(text: &str) -> Option<Self> {
-        let options =
-            Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options);
-
-        let title = parser.parse_heading(1)?;
-        let tags = parser.parse_tags()?;
+    pub fn parse(text: &str) -> Result<Self, ParseError> {
+        let Doc {
+            title,
+            tags,
+            mut parser,
+        } = Doc::parse(text)?;
 
         let mut contexts = vec![];
-        while let Some(context) = Context::parse(&mut parser) {
+        while let Ok(context) = Context::parse(&mut parser) {
             contexts.push(context);
         }
 
-        Some(Self {
+        Ok(Self {
             title,
             tags,
             contexts,
@@ -37,12 +37,17 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn parse(parser: &mut Parser) -> Option<Self> {
+    pub fn parse<'a>(parser: &'a mut Parser) -> Result<Self, ParseError<'a>> {
         let title = parser.parse_heading(2)?;
-        let list = parser.parse_list().unwrap_or_else(Vec::new);
-        let actions = list.into_iter().map(Action::from_fragment).collect();
+        let actions = parser
+            .parse_list()
+            .ok()
+            .unwrap_or_else(Vec::new)
+            .into_iter()
+            .map(Action::from_fragment)
+            .collect();
 
-        Some(Self { title, actions })
+        Ok(Self { title, actions })
     }
 }
 
@@ -59,24 +64,21 @@ impl Action {
             .as_events()
             .iter()
             .rposition(|e| e == &Event::SoftBreak);
-        if let Some(idx) = soft_break_idx {
+
+        let with_project = soft_break_idx.and_then(|idx| {
             let (text, link) = fragment.as_events().split_at(idx);
-            if let Some(link) = as_obsidian_link(&link[1..]) {
-                Action {
-                    text: Fragment::from_events(text.to_vec()),
-                    project: Some(link),
-                }
-            } else {
-                Action {
-                    text: fragment,
-                    project: None,
-                }
-            }
-        } else {
-            Action {
+            as_obsidian_link(&link[1..]).map(|link| (text, link))
+        });
+
+        match with_project {
+            Some((text, link)) => Action {
+                text: Fragment::from_events(text.to_vec()),
+                project: Some(link),
+            },
+            None => Action {
                 text: fragment,
                 project: None,
-            }
+            },
         }
     }
 }

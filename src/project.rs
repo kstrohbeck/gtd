@@ -1,5 +1,6 @@
-use crate::markdown::{Fragment, Heading, Parser};
-use pulldown_cmark::{Event, Options, Tag};
+use crate::markdown::{Doc, Fragment, Heading};
+use crate::parser::ParseError;
+use pulldown_cmark::{Event, Tag};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,20 +19,23 @@ impl Project {
     const COMPLETE_TAG: &'static str = "complete";
 
     // TODO: This should return a Result with errors.
-    pub fn parse(filename: String, text: &str) -> Option<Self> {
+    // TODO: Or more correctly, return a Result<(Project, Vec<Warning>), Error>.
+    pub fn parse(filename: String, text: &str) -> Result<Self, ParseError> {
         let filename_split_idx =
             filename
                 .char_indices()
                 .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
 
-        let options =
-            Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options);
+        let Doc {
+            title,
+            mut tags,
+            mut parser,
+        } = Doc::parse(text)?;
 
-        let title = parser.parse_heading(1)?;
-
-        let mut tags = parser.parse_tags()?;
-        let idx = tags.iter().position(|s| s == Self::GTD_PROJECT_TAG)?;
+        let idx = tags
+            .iter()
+            .position(|s| s == Self::GTD_PROJECT_TAG)
+            .ok_or_else(|| ParseError::Custom("Document doesn't have gtd-project tag".into()))?;
         tags.remove(idx);
 
         let mut goal = None;
@@ -40,22 +44,24 @@ impl Project {
 
         while parser.peek().is_some() {
             let section_heading = parser.parse_heading(2)?;
-            let section_title = section_heading.try_as_str()?;
+            let section_title = section_heading
+                .try_as_str()
+                .ok_or_else(|| ParseError::Custom("Non-string section title".into()))?;
 
             match &*section_title {
                 "Goal" => goal = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
                 "Info" => info = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
-                "Actions" => actions = parser.parse_tasklist(),
+                "Actions" => actions = parser.parse_tasklist().ok(),
                 "Action Items" => {
                     let title_string = title.try_as_title_string().unwrap();
                     println!("Warning: Project \"{}\" uses deprecated \"Action Items\" section; rename to \"Actions\".", title_string);
-                    actions = parser.parse_tasklist();
+                    actions = parser.parse_tasklist().ok();
                 }
-                _ => return None,
+                t => return Err(ParseError::Custom(format!("Unexpected section \"{}\"", t))),
             }
         }
 
-        Some(Self {
+        Ok(Self {
             filename,
             filename_split_idx,
             title,
@@ -99,14 +105,14 @@ mod tests {
     fn basic_project_parses() {
         let project_str = "# Project title\n#gtd-project\n";
         let project = Project::parse("197001010000 Project title".into(), project_str);
-        assert!(project.is_some());
+        assert!(project.is_ok());
     }
 
     #[test]
     fn strings_without_gtd_project_tag_dont_parse() {
         let project_str = "# Project title\n#other #tags\n";
         let project = Project::parse("197001010000 Project title".into(), project_str);
-        assert_eq!(project, None);
+        assert!(project.is_err());
     }
 
     #[test]
