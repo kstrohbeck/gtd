@@ -67,7 +67,7 @@ impl<'a> Parser<'a> {
             }
         } else {
             Err(ParseError::Unexpected {
-                expected: Event::TaskListMarker(false),
+                expected: Event::Text(CowStr::Inlined(' '.into())),
                 actual: Actual::Eof,
             })
         }
