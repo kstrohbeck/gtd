@@ -2,8 +2,6 @@ use crate::markdown::{Fragment, Heading, Parser};
 use pulldown_cmark::{Event, Options, Tag};
 use std::fmt;
 
-const GTD_PROJECT_TAG: &str = "gtd-project";
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     pub filename: String,
@@ -16,6 +14,7 @@ pub struct Project {
 }
 
 impl Project {
+    const GTD_PROJECT_TAG: &'static str = "gtd-project";
     const COMPLETE_TAG: &'static str = "complete";
 
     // TODO: This should return a Result with errors.
@@ -32,7 +31,7 @@ impl Project {
         let title = parser.parse_heading(1)?;
 
         let mut tags = parser.parse_tags()?;
-        let idx = tags.iter().position(|s| s == GTD_PROJECT_TAG)?;
+        let idx = tags.iter().position(|s| s == Self::GTD_PROJECT_TAG)?;
         tags.remove(idx);
 
         let mut goal = None;
