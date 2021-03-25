@@ -1,10 +1,13 @@
 use crate::markdown::{Fragment, Heading, Parser};
 use pulldown_cmark::{Event, Options, Tag};
+use std::fmt;
 
 const GTD_PROJECT_TAG: &str = "gtd-project";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
+    pub filename: String,
+    filename_split_idx: Option<usize>,
     pub title: Heading,
     pub tags: Vec<String>,
     pub goal: Option<Fragment>,
@@ -13,8 +16,15 @@ pub struct Project {
 }
 
 impl Project {
+    const COMPLETE_TAG: &'static str = "complete";
+
     // TODO: This should return a Result with errors.
-    pub fn parse(text: &str) -> Option<Self> {
+    pub fn parse(filename: String, text: &str) -> Option<Self> {
+        let filename_split_idx =
+            filename
+                .char_indices()
+                .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
+
         let options =
             Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let mut parser = Parser::new_ext(text, options);
@@ -42,12 +52,37 @@ impl Project {
         }
 
         Some(Self {
+            filename,
+            filename_split_idx,
             title,
             tags,
             goal,
             info,
             actions: actions.unwrap_or_else(Vec::new),
         })
+    }
+
+    pub fn id(&self) -> Option<&str> {
+        let idx = self.filename_split_idx?;
+        let id = self.filename.get(..idx)?;
+        if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
+            return None;
+        }
+        Some(id)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.filename.get(self.filename_split_idx? + 1..)
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.tags.iter().any(|s| s == Self::COMPLETE_TAG)
+    }
+}
+
+impl fmt::Display for Project {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.filename)
     }
 }
 
@@ -59,21 +94,21 @@ mod tests {
     #[test]
     fn basic_project_parses() {
         let project_str = "# Project title\n#gtd-project\n";
-        let project = Project::parse(project_str);
+        let project = Project::parse("197001010000 Project title".into(), project_str);
         assert!(project.is_some());
     }
 
     #[test]
     fn strings_without_gtd_project_tag_dont_parse() {
         let project_str = "# Project title\n#other #tags\n";
-        let project = Project::parse(project_str);
+        let project = Project::parse("197001010000 Project title".into(), project_str);
         assert_eq!(project, None);
     }
 
     #[test]
     fn simple_title_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.title,
             Fragment::from_events(vec![Event::Text("Project title".into())])
@@ -85,7 +120,7 @@ mod tests {
     #[test]
     fn complex_title_is_parsed() {
         let project_str = "# Title with `code`\n#gtd-project\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Title with code".into(), project_str).unwrap();
         assert_eq!(
             project.title,
             Fragment::from_events(vec![
@@ -100,14 +135,14 @@ mod tests {
     #[test]
     fn gtd_project_tag_is_not_in_tags() {
         let project_str = "# Project title\n#gtd-project #other #tags\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert!(!project.tags.contains(&String::from("gtd-project")));
     }
 
     #[test]
     fn tags_are_parsed() {
         let project_str = "# Project title\n#gtd-project #other #tags\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.tags,
             vec![String::from("other"), String::from("tags")]
@@ -117,7 +152,7 @@ mod tests {
     #[test]
     fn goal_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n## Goal\nGoal text\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.goal,
             Some(Fragment::from_events(vec![
@@ -131,7 +166,7 @@ mod tests {
     #[test]
     fn goal_is_parsed_after_other_sections() {
         let project_str = "# Project title\n#gtd-project\n## Info\nFoo\n## Goal\nGoal text\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.goal,
             Some(Fragment::from_events(vec![
@@ -145,7 +180,7 @@ mod tests {
     #[test]
     fn info_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n## Info\nFoo\n";
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.info,
             Some(Fragment::from_events(vec![
@@ -160,8 +195,7 @@ mod tests {
     fn actions_are_parsed() {
         let project_str =
             "# Project title\n#gtd-project\n## Actions\n- [x] First action\n- [ ] Second action\n";
-
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
         assert_eq!(
             project.actions,
             vec![
@@ -180,8 +214,7 @@ mod tests {
     #[test]
     fn things_are_parsed_even_in_reverse_order() {
         let project_str = "# Project title\n#gtd-project\n## Actions\n- [x] First action\n- [ ] Second action\n\n## Info\n\nFoo\n\n## Goal\n\nGoal text\n";
-
-        let project = Project::parse(project_str).unwrap();
+        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
 
         assert_eq!(
             project.goal,

@@ -1,8 +1,9 @@
 use self::action_list::ActionList;
+use self::project::Project;
 use self::project_list::ProjectList;
 use self::someday_list::SomedayList;
 use argh::FromArgs;
-use std::{collections::HashSet, convert::AsRef, env, fmt, fs, path::Path};
+use std::{collections::HashSet, convert::AsRef, env, fs, path::Path};
 
 mod action_list;
 mod markdown;
@@ -56,13 +57,13 @@ fn main() {
 
                 fn validate_title(project: &Project) -> Result<(), String> {
                     let name_title = project
-                        .title()
+                        .name()
                         .ok_or_else(|| format!("{} has an invalid title in its name", project))?;
 
-                    let body_title =
-                        project.data.title.try_as_title_string().ok_or_else(|| {
-                            format!("{} has an invalid title in its body", project)
-                        })?;
+                    let body_title = project
+                        .title
+                        .try_as_title_string()
+                        .ok_or_else(|| format!("{} has an invalid title in its body", project))?;
 
                     if name_title != body_title {
                         return Err(format!("{}'s name and body title don't match", project));
@@ -76,8 +77,8 @@ fn main() {
                     project_list: &ProjectList,
                     someday_list: &SomedayList,
                 ) -> Result<(), String> {
-                    let is_in_project_list = project_list.contains(&project.name);
-                    let is_in_someday_list = someday_list.contains(&project.name);
+                    let is_in_project_list = project_list.contains(&project.filename);
+                    let is_in_someday_list = someday_list.contains(&project.filename);
 
                     match (
                         is_in_project_list,
@@ -109,7 +110,7 @@ fn main() {
                 }
 
                 fn verify_all_actions_complete(project: &Project) -> Result<(), String> {
-                    let are_all_actions_complete = project.data.actions.iter().all(|(x, _)| *x);
+                    let are_all_actions_complete = project.actions.iter().all(|(x, _)| *x);
                     if project.is_complete() && !are_all_actions_complete {
                         Err(format!(
                             "{} is marked complete but has at least one uncompleted action",
@@ -141,7 +142,7 @@ fn main() {
             let mut ids = HashSet::new();
 
             for project in &docs.projects {
-                project_links.insert(project.name.as_str());
+                project_links.insert(project.filename.as_str());
                 validate_project(project, &docs, &mut ids);
             }
 
@@ -150,9 +151,9 @@ fn main() {
             for link in &docs.project_list.items {
                 let link = link as &str;
 
-                if let Some(project) = docs.projects.iter().find(|p| p.name == link) {
+                if let Some(project) = docs.projects.iter().find(|p| p.filename == link) {
                     let mut has_active_action = false;
-                    for action in project.data.actions.iter().map(|(_, f)| f) {
+                    for action in project.actions.iter().map(|(_, f)| f) {
                         for ctx in &docs.action_list.contexts {
                             for act in &ctx.actions {
                                 if action == &act.text {
@@ -193,13 +194,13 @@ fn main() {
                 for action in &context.actions {
                     if let Some(link) = &action.project {
                         let link = link as &str;
-                        if let Some(project) = docs.projects.iter().find(|p| p.name == link) {
+                        if let Some(project) = docs.projects.iter().find(|p| p.filename == link) {
                             if !docs.project_list.contains(link) {
                                 println!("{} is referenced in the action list but is not in the project list", link);
                             }
 
                             let mut has_action = false;
-                            for (done, act) in &project.data.actions {
+                            for (done, act) in &project.actions {
                                 if &action.text == act {
                                     has_action = true;
                                     if *done {
@@ -258,10 +259,8 @@ impl Documents {
                 }
 
                 let text = fs::read_to_string(&path).ok()?;
-                let data = project::Project::parse(&text)?;
                 let name = path.file_stem()?.to_str()?.to_string();
-
-                Some(Project::new(name, data))
+                Project::parse(name, &text)
             })
         }
 
@@ -272,50 +271,5 @@ impl Documents {
             someday_list: load_someday_list(cur_dir),
             projects: load_projects(cur_dir).collect(),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Project {
-    name: String,
-    name_split_idx: Option<usize>,
-    data: project::Project,
-}
-
-impl Project {
-    const COMPLETE_TAG: &'static str = "complete";
-
-    fn new(name: String, data: project::Project) -> Self {
-        let name_split_idx = name
-            .char_indices()
-            .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
-        Self {
-            name,
-            name_split_idx,
-            data,
-        }
-    }
-
-    fn id(&self) -> Option<&str> {
-        let idx = self.name_split_idx?;
-        let id = self.name.get(..idx)?;
-        if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
-            return None;
-        }
-        Some(id)
-    }
-
-    fn title(&self) -> Option<&str> {
-        self.name_split_idx.and_then(|idx| self.name.get(idx + 1..))
-    }
-
-    fn is_complete(&self) -> bool {
-        self.data.tags.iter().any(|s| s == Self::COMPLETE_TAG)
-    }
-}
-
-impl fmt::Display for Project {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
     }
 }
