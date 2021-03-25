@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Deprecated the "Action Items" section in favor of "Actions".
 - Created a custom parser.
 - Removed lifetime from all data types.
 - Removed lifetime from `Fragment`.

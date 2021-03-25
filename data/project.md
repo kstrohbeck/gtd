@@ -5,7 +5,7 @@
 
 This is a test project.
 
-## Action Items
+## Actions
 
 - [ ] First action
 - [ ] Second action
