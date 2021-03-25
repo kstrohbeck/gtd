@@ -30,13 +30,18 @@ impl Project {
         let mut actions = None;
 
         while parser.peek().is_some() {
-            let heading = parser.parse_heading(2)?;
-            let title = heading.try_as_str()?;
+            let section_heading = parser.parse_heading(2)?;
+            let section_title = section_heading.try_as_str()?;
 
-            match &*title {
+            match &*section_title {
                 "Goal" => goal = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
                 "Info" => info = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
-                "Actions" | "Action Items" => actions = parser.parse_tasklist(),
+                "Actions" => actions = parser.parse_tasklist(),
+                "Action Items" => {
+                    let title_string = title.try_as_title_string().unwrap();
+                    println!("Warning: Project \"{}\" uses deprecated \"Action Items\" section; rename to \"Actions\".", title_string);
+                    actions = parser.parse_tasklist();
+                }
                 _ => return None,
             }
         }
