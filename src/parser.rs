@@ -1,3 +1,5 @@
+//! Markdown parser and helpers.
+
 use crate::markdown::{Fragment, Heading};
 use pulldown_cmark::{CowStr, Event, Options, Parser as MarkdownParser, Tag};
 use std::{
@@ -7,94 +9,115 @@ use std::{
     iter::Peekable,
 };
 
+/// A Markdown parser.
+///
+/// `Parser` has single event lookahead, meaning that as long as you only need one event to
+/// determine what to parse (which its internal parsing methods do,) you don't need to care about
+/// backtracking.
 pub struct Parser<'a> {
     parser: Peekable<MarkdownParser<'a>>,
 }
 
 impl<'a> Parser<'a> {
+    /// Creates a new parser from `text`.
     pub fn new(text: &'a str) -> Self {
         let parser = MarkdownParser::new(text).peekable();
         Self { parser }
     }
 
+    /// Creates a new parser from `text` with the given `options`.
     pub fn new_ext(text: &'a str, options: Options) -> Self {
         let parser = MarkdownParser::new_ext(text, options).peekable();
         Self { parser }
     }
 
+    /// Peeks at the next event in the parser without consuming it.
     pub fn peek(&mut self) -> Option<&Event<'a>> {
         self.parser.peek()
     }
 
-    // TODO: Combine parse_event, parse_text, and parse_task_marker.
-
-    pub fn parse_event(&mut self, req: &Event<'a>) -> Result<Event<'a>, ParseError<'a>> {
+    /// Parses an arbitrary event.
+    ///
+    /// The `matches` predicate determines if an event should be parsed at all - if it returns
+    /// `true`, parsing continues; if `false`, parsing fails. In the success case, `extract` is used
+    /// to extract a value from the event, which is returned. In the failure case, `expected`
+    /// generates an example of the event type that the function is looking for that is used in the
+    /// returned error.
+    fn parse_general<F, G, H, T>(
+        &mut self,
+        matches: F,
+        extract: G,
+        expected: H,
+    ) -> Result<T, ParseError<'a>>
+    where
+        F: Fn(&Event<'a>) -> bool,
+        G: Fn(Event<'a>) -> Option<T>,
+        H: Fn() -> Event<'a>,
+    {
         if let Some(ev) = self.peek() {
-            if ev == req {
-                let value = match self.next() {
-                    Some(v) => v,
-                    _ => panic!("peek not the same as next"),
-                };
-
-                Ok(value)
+            if matches(ev) {
+                Ok(self
+                    .next()
+                    .and_then(extract)
+                    .expect("peek not the same as next"))
             } else {
                 Err(ParseError::Unexpected {
-                    expected: req.clone(),
+                    expected: expected(),
                     actual: Actual::Event(ev.clone()),
                 })
             }
         } else {
             Err(ParseError::Unexpected {
-                expected: req.clone(),
+                expected: expected(),
                 actual: Actual::Eof,
             })
         }
     }
 
+    /// Parses an unbroken chunk of text.
     fn parse_text(&mut self) -> Result<CowStr<'a>, ParseError<'a>> {
-        if let Some(ev) = self.peek() {
-            if let Event::Text(_) = ev {
-                let text = match self.next() {
-                    Some(Event::Text(t)) => t,
-                    _ => panic!("peek not the same as next"),
-                };
-                Ok(text)
-            } else {
-                Err(ParseError::Unexpected {
-                    expected: Event::Text(CowStr::Inlined(' '.into())),
-                    actual: Actual::Event(ev.clone()),
-                })
-            }
-        } else {
-            Err(ParseError::Unexpected {
-                expected: Event::Text(CowStr::Inlined(' '.into())),
-                actual: Actual::Eof,
-            })
-        }
+        self.parse_general(
+            |ev| matches!(ev, &Event::Text(_)),
+            |ev| match ev {
+                Event::Text(t) => Some(t),
+                _ => None,
+            },
+            || Event::Text(CowStr::Inlined(' '.into())),
+        )
     }
 
+    /// Parses a task marker checkbox.
     fn parse_task_marker(&mut self) -> Result<bool, ParseError<'a>> {
-        if let Some(ev) = self.peek() {
-            if let Event::TaskListMarker(_) = ev {
-                let b = match self.next() {
-                    Some(Event::TaskListMarker(b)) => b,
-                    _ => panic!("peek not the same as next"),
-                };
-                Ok(b)
-            } else {
-                Err(ParseError::Unexpected {
-                    expected: Event::TaskListMarker(false),
-                    actual: Actual::Event(ev.clone()),
-                })
-            }
-        } else {
-            Err(ParseError::Unexpected {
-                expected: Event::TaskListMarker(false),
-                actual: Actual::Eof,
-            })
-        }
+        self.parse_general(
+            |ev| matches!(ev, &Event::TaskListMarker(_)),
+            |ev| match ev {
+                Event::TaskListMarker(b) => Some(b),
+                _ => None,
+            },
+            || Event::TaskListMarker(false),
+        )
     }
 
+    /// Parses a start `tag`.
+    fn parse_start(&mut self, tag: &Tag<'a>) -> Result<Event<'a>, ParseError<'a>> {
+        self.parse_general(
+            |ev| matches!(ev, Event::Start(t) if t == tag),
+            Some,
+            || Event::Start(tag.clone()),
+        )
+    }
+
+    /// Parses an end `tag`.
+    fn parse_end(&mut self, tag: &Tag<'a>) -> Result<Event<'a>, ParseError<'a>> {
+        self.parse_general(
+            |ev| matches!(ev, Event::End(t) if t == tag),
+            Some,
+            || Event::End(tag.clone()),
+        )
+    }
+
+    /// Parses all events until the `until` event occurs, returning the consumed events as a
+    /// `Fragment`.
     pub fn parse_until(&mut self, until: Event<'a>) -> Fragment {
         let mut frag = Vec::new();
 
@@ -109,67 +132,71 @@ impl<'a> Parser<'a> {
         Fragment::from_events(frag)
     }
 
-    fn parse_start(&mut self, tag: Tag<'a>) -> Result<Event<'a>, ParseError<'a>> {
-        self.parse_event(&Event::Start(tag))
-    }
-
-    fn parse_end(&mut self, tag: Tag<'a>) -> Result<Event<'a>, ParseError<'a>> {
-        self.parse_event(&Event::End(tag))
-    }
-
-    fn parse_element<F, T>(&mut self, tag: Tag<'a>, func: F) -> Result<T, ParseError<'a>>
+    /// Parses an element surrounded by start and end `tag`s given the infallible function `func`.
+    fn parse_element<F, T>(&mut self, tag: &Tag<'a>, func: F) -> Result<T, ParseError<'a>>
     where
         F: Fn(&mut Self) -> T,
     {
-        self.parse_start(tag.clone())?;
-        let output = func(self);
+        self.parse_element_res(tag, |p| Ok(func(p)))
+    }
+
+    /// Parses an element surrounded by start and end `tag`s given the fallible parsing function
+    /// `func`.
+    fn parse_element_res<F, T>(&mut self, tag: &Tag<'a>, func: F) -> Result<T, ParseError<'a>>
+    where
+        F: Fn(&mut Self) -> Result<T, ParseError<'a>>,
+    {
+        self.parse_start(tag)?;
+        let output = func(self)?;
         self.parse_end(tag)?;
         Ok(output)
     }
 
-    pub fn parse_heading(&mut self, heading: u32) -> Result<Heading, ParseError<'a>> {
-        let frag = self.parse_element(Tag::Heading(heading), |p| {
-            p.parse_until(Event::End(Tag::Heading(heading)))
-        })?;
-
-        frag.try_into().map_err(ParseError::CouldntParseHeading)
+    /// Parses a heading of the given `level`.
+    pub fn parse_heading(&mut self, level: u32) -> Result<Heading, ParseError<'a>> {
+        self.parse_element(&Tag::Heading(level), |p| {
+            p.parse_until(Event::End(Tag::Heading(level)))
+        })?
+        .try_into()
+        .map_err(ParseError::CouldntParseHeading)
     }
 
+    /// Parses an unordered list.
     pub fn parse_list(&mut self) -> Result<Vec<Fragment>, ParseError<'a>> {
-        self.parse_element(Tag::List(None), |p| {
+        self.parse_element(&Tag::List(None), |p| {
             std::iter::from_fn(|| p.parse_item().ok()).collect()
         })
     }
 
+    /// Parses a single item in a list.
     fn parse_item(&mut self) -> Result<Fragment, ParseError<'a>> {
-        self.parse_element(Tag::Item, |p| p.parse_until(Event::End(Tag::Item)))
+        self.parse_element(&Tag::Item, |p| p.parse_until(Event::End(Tag::Item)))
     }
 
+    /// Parses an unordered list of task items (checkboxes followed by a description.)
     pub fn parse_tasklist(&mut self) -> Result<Vec<(bool, Fragment)>, ParseError<'a>> {
-        self.parse_element(Tag::List(None), |p| {
+        self.parse_element(&Tag::List(None), |p| {
             std::iter::from_fn(|| p.parse_task().ok()).collect()
         })
     }
 
+    /// Parses a single task in a task list.
     fn parse_task(&mut self) -> Result<(bool, Fragment), ParseError<'a>> {
-        self.parse_start(Tag::Item)?;
-        let b = self.parse_task_marker()?;
-        let text = self.parse_until(Event::End(Tag::Item));
-        self.parse_end(Tag::Item)?;
-        Ok((b, text))
+        self.parse_element_res(&Tag::Item, |p| {
+            let b = p.parse_task_marker()?;
+            let text = p.parse_until(Event::End(Tag::Item));
+            Ok((b, text))
+        })
     }
 
+    /// Parses a list of hashtags.
     pub fn parse_tags(&mut self) -> Result<Vec<String>, ParseError<'a>> {
-        self.parse_start(Tag::Paragraph)?;
-        let text = self.parse_text()?;
-        self.parse_end(Tag::Paragraph)?;
-
-        let tags = text
-            .split(' ')
-            .flat_map(|s| s.strip_prefix('#').map(|s| s.to_string()))
-            .collect();
-
-        Ok(tags)
+        self.parse_element_res(&Tag::Paragraph, |p| {
+            Ok(p.parse_text()?
+                .split(' ')
+                .flat_map(|s| s.strip_prefix('#').map(|s| s.to_string()))
+                .collect())
+        })
     }
 }
 
@@ -181,13 +208,19 @@ impl<'a> Iterator for Parser<'a> {
     }
 }
 
+/// An Error that happens while parsing Markdown.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'a> {
+    /// Error when the parser expects one event but gets another.
     Unexpected {
         expected: Event<'a>,
         actual: Actual<'a>,
     },
+
+    /// Error when the parser tries to parse a heading that contains invalid events.
     CouldntParseHeading(<Heading as TryFrom<Fragment>>::Error),
+
+    /// Custom error.
     Custom(String),
 }
 
@@ -209,9 +242,13 @@ impl<'a> fmt::Display for ParseError<'a> {
 
 impl<'a> Error for ParseError<'a> {}
 
+/// Real event received by the parser.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Actual<'a> {
+    /// Event triggered when the parser has reached the end of file.
     Eof,
+
+    /// A standard `pulldown_cmark` event.
     Event(Event<'a>),
 }
 
@@ -224,6 +261,7 @@ impl<'a> fmt::Display for Actual<'a> {
     }
 }
 
+/// Formats a `pulldown_cmark` event for use in error messages.
 pub fn fmt_event<'a>(event: &Event<'a>, f: &mut fmt::Formatter) -> fmt::Result {
     match event {
         Event::Start(tag) => {
@@ -245,6 +283,7 @@ pub fn fmt_event<'a>(event: &Event<'a>, f: &mut fmt::Formatter) -> fmt::Result {
     }
 }
 
+/// Formats a `pulldown_cmark` tag for use in error messages.
 pub fn fmt_tag<'a>(tag: &Tag<'a>, f: &mut fmt::Formatter) -> fmt::Result {
     match tag {
         Tag::Paragraph => write!(f, "paragraph"),
