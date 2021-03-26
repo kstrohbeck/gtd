@@ -252,8 +252,8 @@ impl Documents {
         }
 
         fn load_projects<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = Project> {
-            let atom_dir = cur_dir.as_ref().join("Atoms");
-            fs::read_dir(&atom_dir).unwrap().flat_map(|e| {
+            let project_dir = cur_dir.as_ref().join("Projects");
+            fs::read_dir(&project_dir).unwrap().flat_map(|e| {
                 let path = e.ok()?.path();
                 if path.is_dir() {
                     return None;
