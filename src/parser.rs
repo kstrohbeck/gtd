@@ -161,11 +161,26 @@ impl<'a> Parser<'a> {
         .map_err(ParseError::CouldntParseHeading)
     }
 
+    pub fn parse_general_list<F, T>(
+        &mut self,
+        ordered: Option<u64>,
+        item_parser: F,
+    ) -> Result<Vec<T>, ParseError<'a>>
+    where
+        F: Fn(&mut Self) -> Result<T, ParseError<'a>>,
+    {
+        self.parse_start(&Tag::List(ordered))?;
+        let mut items = Vec::new();
+        while self.parse_end(&Tag::List(ordered)).is_err() {
+            items.push(item_parser(self)?);
+        }
+        Ok(items)
+    }
+
     /// Parses an unordered list.
     pub fn parse_list(&mut self) -> Result<Vec<Fragment>, ParseError<'a>> {
-        self.parse_element(&Tag::List(None), |p| {
-            std::iter::from_fn(|| p.parse_item().ok()).collect()
-        })
+        //self.parse_general_list(None, |p| p.parse_item())
+        self.parse_general_list(None, Self::parse_item)
     }
 
     /// Parses a single item in a list.
@@ -175,9 +190,7 @@ impl<'a> Parser<'a> {
 
     /// Parses an unordered list of task items (checkboxes followed by a description.)
     pub fn parse_tasklist(&mut self) -> Result<Vec<(bool, Fragment)>, ParseError<'a>> {
-        self.parse_element(&Tag::List(None), |p| {
-            std::iter::from_fn(|| p.parse_task().ok()).collect()
-        })
+        self.parse_general_list(None, Self::parse_task)
     }
 
     /// Parses a single task in a task list.
@@ -421,6 +434,48 @@ mod tests {
             let mut parser = Parser::new(text);
             let tags = parser.parse_tags();
             assert_eq!(tags, Ok(vec!["foo".into(), "bar".into()]),);
+        }
+    }
+
+    mod parse_list {
+        use super::*;
+
+        #[test]
+        fn single_element_list_is_parsed() {
+            let text = "- one";
+            let mut parser = Parser::new(text);
+            let list = parser.parse_list();
+            assert_eq!(
+                list,
+                Ok(vec![Fragment::from_events(vec![Event::Text("one".into())])])
+            );
+        }
+
+        #[test]
+        fn multi_element_list_is_parsed() {
+            let text = "- one\n- two\n  `three`";
+            let mut parser = Parser::new(text);
+            let list = parser.parse_list();
+            assert_eq!(
+                list,
+                Ok(vec![
+                    Fragment::from_events(vec![Event::Text("one".into())]),
+                    Fragment::from_events(vec![
+                        Event::Text("two".into()),
+                        Event::SoftBreak,
+                        Event::Code("three".into()),
+                    ])
+                ])
+            );
+        }
+
+        #[test]
+        fn element_after_list_is_preserved() {
+            let text = "- one\n- two\n  `three`\n\n---";
+            let mut parser = Parser::new(text);
+            let _list = parser.parse_list();
+            let next = parser.next();
+            assert_eq!(next, Some(Event::Rule));
         }
     }
 }
