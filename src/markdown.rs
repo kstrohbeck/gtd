@@ -1,5 +1,5 @@
 use crate::parser::{DisplayableEvent, DisplayableTag, ParseError, Parser};
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Tag};
+use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Tag};
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
@@ -65,9 +65,7 @@ pub struct Doc<'a> {
 
 impl<'a> Doc<'a> {
     pub fn parse(text: &'a str) -> Result<Self, ParseError<'a>> {
-        let options =
-            Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
-        let mut parser = Parser::new_ext(text, options);
+        let mut parser = Parser::new(text);
 
         let title = parser.parse_heading(1)?;
         let tags = parser.parse_tags()?;

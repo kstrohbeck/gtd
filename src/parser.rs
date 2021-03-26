@@ -21,12 +21,8 @@ pub struct Parser<'a> {
 impl<'a> Parser<'a> {
     /// Creates a new parser from `text`.
     pub fn new(text: &'a str) -> Self {
-        let parser = MarkdownParser::new(text).peekable();
-        Self { parser }
-    }
-
-    /// Creates a new parser from `text` with the given `options`.
-    pub fn new_ext(text: &'a str, options: Options) -> Self {
+        let options =
+            Options::ENABLE_TABLES | Options::ENABLE_FOOTNOTES | Options::ENABLE_TASKLISTS;
         let parser = MarkdownParser::new_ext(text, options).peekable();
         Self { parser }
     }
@@ -161,7 +157,7 @@ impl<'a> Parser<'a> {
         .map_err(ParseError::CouldntParseHeading)
     }
 
-    pub fn parse_general_list<F, T>(
+    fn parse_general_list<F, T>(
         &mut self,
         ordered: Option<u64>,
         item_parser: F,
@@ -425,18 +421,6 @@ mod tests {
         }
     }
 
-    mod parse_tags {
-        use super::*;
-
-        #[test]
-        fn tags_are_parsed() {
-            let text = "#foo #bar";
-            let mut parser = Parser::new(text);
-            let tags = parser.parse_tags();
-            assert_eq!(tags, Ok(vec!["foo".into(), "bar".into()]),);
-        }
-    }
-
     mod parse_list {
         use super::*;
 
@@ -476,6 +460,69 @@ mod tests {
             let _list = parser.parse_list();
             let next = parser.next();
             assert_eq!(next, Some(Event::Rule));
+        }
+    }
+
+    mod parse_tasklist {
+        use super::*;
+
+        #[test]
+        fn single_element_tasklist_is_parsed() {
+            let text = "- [ ] one";
+            let mut parser = Parser::new(text);
+            let list = parser.parse_tasklist();
+            assert_eq!(
+                list,
+                Ok(vec![(
+                    false,
+                    Fragment::from_events(vec![Event::Text("one".into())])
+                )])
+            );
+        }
+
+        #[test]
+        fn multi_element_tasklist_is_parsed() {
+            let text = "- [ ] one\n- [x] two\n      `three`";
+            let mut parser = Parser::new(text);
+            let list = parser.parse_tasklist();
+            assert_eq!(
+                list,
+                Ok(vec![
+                    (
+                        false,
+                        Fragment::from_events(vec![Event::Text("one".into())])
+                    ),
+                    (
+                        true,
+                        Fragment::from_events(vec![
+                            Event::Text("two".into()),
+                            Event::SoftBreak,
+                            Event::Code("three".into()),
+                        ])
+                    )
+                ])
+            );
+        }
+
+        #[test]
+        fn element_after_tasklist_is_preserved() {
+            let text = "- [ ] one\n- [x] two\n      `three`\n\n---";
+            let mut parser = Parser::new(text);
+            let _list = parser.parse_tasklist();
+            let next = parser.next();
+            assert_eq!(next, Some(Event::Rule));
+        }
+    }
+
+    mod parse_tags {
+        use super::*;
+
+        #[test]
+        fn tags_are_parsed() {
+            let text = "#foo #bar";
+            let mut parser = Parser::new(text);
+            let tags = parser.parse_tags();
+            assert_eq!(tags, Ok(vec!["foo".into(), "bar".into()]),);
         }
     }
 }
