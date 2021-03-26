@@ -68,7 +68,7 @@ impl<'a> Doc<'a> {
         let mut parser = Parser::new(text);
 
         let title = parser.parse_heading(1)?;
-        let tags = parser.parse_tags()?;
+        let tags = parser.parse_tags().unwrap_or_else(|_| Vec::new());
 
         Ok(Self {
             title,
