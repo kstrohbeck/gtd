@@ -147,7 +147,6 @@ pub enum HeadingEvent<'a> {
     FootnoteReference(CowStr<'a>),
 }
 
-// TODO: Have an actual error type.
 impl<'a> TryFrom<Event<'a>> for HeadingEvent<'a> {
     type Error = HeadingEventError<'a>;
 
