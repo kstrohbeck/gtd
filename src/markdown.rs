@@ -1,4 +1,4 @@
-use crate::parser::{fmt_event, fmt_tag, ParseError, Parser};
+use crate::parser::{DisplayableEvent, DisplayableTag, ParseError, Parser};
 use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Options, Tag};
 use std::{
     convert::{TryFrom, TryInto},
@@ -180,19 +180,12 @@ impl<'a> fmt::Display for HeadingEventError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::InvalidStartTag(HeadingTagError(t)) => {
-                write!(f, "start of ")?;
-                fmt_tag(t, f)?;
-                write!(f, " is invalid in header")
+                write!(f, "start of {} is invalid in header", DisplayableTag(t))
             }
             Self::InvalidEndTag(HeadingTagError(t)) => {
-                write!(f, "end of ")?;
-                fmt_tag(t, f)?;
-                write!(f, " is invalid in header")
+                write!(f, "end of {} is invalid in header", DisplayableTag(t))
             }
-            Self::InvalidEvent(e) => {
-                fmt_event(e, f)?;
-                write!(f, " is invalid in header")
-            }
+            Self::InvalidEvent(e) => write!(f, "{} is invalid in header", DisplayableEvent(e)),
         }
     }
 }
@@ -228,8 +221,7 @@ pub struct HeadingTagError<'a>(Tag<'a>);
 
 impl<'a> fmt::Display for HeadingTagError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt_tag(&self.0, f)?;
-        write!(f, " is invalid in header")
+        write!(f, "{} is invalid in header", DisplayableTag(&self.0))
     }
 }
 

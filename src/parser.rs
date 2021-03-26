@@ -241,9 +241,7 @@ impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Unexpected { expected, actual } => {
-                write!(f, "expected ")?;
-                fmt_event(expected, f)?;
-                write!(f, ", got {}", actual)
+                write!(f, "expected {}, got {}", DisplayableEvent(expected), actual)
             }
             Self::CouldntParseHeading(actual) => {
                 write!(f, "expected heading event, got {}", actual)
@@ -269,53 +267,55 @@ impl<'a> fmt::Display for Actual<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Eof => write!(f, "end of file"),
-            Self::Event(e) => fmt_event(e, f),
+            Self::Event(e) => write!(f, "{}", DisplayableEvent(e)),
         }
     }
 }
 
-/// Formats a `pulldown_cmark` event for use in error messages.
-pub fn fmt_event<'a>(event: &Event<'a>, f: &mut fmt::Formatter) -> fmt::Result {
-    match event {
-        Event::Start(tag) => {
-            write!(f, "start of ")?;
-            fmt_tag(tag, f)
+/// Wrapper for `Event`s that allows them to be displayed.
+pub struct DisplayableEvent<'a>(pub &'a Event<'a>);
+
+impl<'a> fmt::Display for DisplayableEvent<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Event::Start(tag) => write!(f, "start of {}", DisplayableTag(tag)),
+            Event::End(tag) => write!(f, "end of {}", DisplayableTag(tag)),
+            Event::Text(_) => write!(f, "text"),
+            Event::Code(_) => write!(f, "code"),
+            Event::Html(_) => write!(f, "html"),
+            Event::FootnoteReference(_) => write!(f, "footnote reference"),
+            Event::SoftBreak => write!(f, "soft break"),
+            Event::HardBreak => write!(f, "hard break"),
+            Event::Rule => write!(f, "rule"),
+            Event::TaskListMarker(_) => write!(f, "task list marker"),
         }
-        Event::End(tag) => {
-            write!(f, "end of ")?;
-            fmt_tag(tag, f)
-        }
-        Event::Text(_) => write!(f, "text"),
-        Event::Code(_) => write!(f, "code"),
-        Event::Html(_) => write!(f, "html"),
-        Event::FootnoteReference(_) => write!(f, "footnote reference"),
-        Event::SoftBreak => write!(f, "soft break"),
-        Event::HardBreak => write!(f, "hard break"),
-        Event::Rule => write!(f, "rule"),
-        Event::TaskListMarker(_) => write!(f, "task list marker"),
     }
 }
 
-/// Formats a `pulldown_cmark` tag for use in error messages.
-pub fn fmt_tag<'a>(tag: &Tag<'a>, f: &mut fmt::Formatter) -> fmt::Result {
-    match tag {
-        Tag::Paragraph => write!(f, "paragraph"),
-        Tag::Heading(level) => write!(f, "level {} heading", level),
-        Tag::BlockQuote => write!(f, "block quote"),
-        Tag::CodeBlock(_) => write!(f, "code block"),
-        Tag::List(None) => write!(f, "unordered list"),
-        Tag::List(Some(_)) => write!(f, "ordered list"),
-        Tag::Item => write!(f, "list item"),
-        Tag::FootnoteDefinition(_) => write!(f, "footnote definition"),
-        Tag::Table(_) => write!(f, "table"),
-        Tag::TableHead => write!(f, "table head"),
-        Tag::TableRow => write!(f, "table row"),
-        Tag::TableCell => write!(f, "table cell"),
-        Tag::Emphasis => write!(f, "emphasis"),
-        Tag::Strong => write!(f, "strong"),
-        Tag::Strikethrough => write!(f, "strikethrough"),
-        Tag::Link(_, _, _) => write!(f, "link"),
-        Tag::Image(_, _, _) => write!(f, "image"),
+/// Wrapper for `Tag`s that allows them to be displayed.
+pub struct DisplayableTag<'a>(pub &'a Tag<'a>);
+
+impl<'a> fmt::Display for DisplayableTag<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.0 {
+            Tag::Paragraph => write!(f, "paragraph"),
+            Tag::Heading(level) => write!(f, "level {} heading", level),
+            Tag::BlockQuote => write!(f, "block quote"),
+            Tag::CodeBlock(_) => write!(f, "code block"),
+            Tag::List(None) => write!(f, "unordered list"),
+            Tag::List(Some(_)) => write!(f, "ordered list"),
+            Tag::Item => write!(f, "list item"),
+            Tag::FootnoteDefinition(_) => write!(f, "footnote definition"),
+            Tag::Table(_) => write!(f, "table"),
+            Tag::TableHead => write!(f, "table head"),
+            Tag::TableRow => write!(f, "table row"),
+            Tag::TableCell => write!(f, "table cell"),
+            Tag::Emphasis => write!(f, "emphasis"),
+            Tag::Strong => write!(f, "strong"),
+            Tag::Strikethrough => write!(f, "strikethrough"),
+            Tag::Link(_, _, _) => write!(f, "link"),
+            Tag::Image(_, _, _) => write!(f, "image"),
+        }
     }
 }
 
