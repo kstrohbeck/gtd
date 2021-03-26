@@ -258,4 +258,72 @@ mod tests {
             ],
         );
     }
+
+    mod id {
+        use super::*;
+
+        #[test]
+        fn id_is_returned_if_it_exists() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+
+            assert_eq!(project.id(), Some("197001010000"));
+        }
+
+        #[test]
+        fn id_is_not_returned_if_in_wrong_format() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("19700101 Project title".into(), project_str).unwrap();
+
+            assert!(project.id().is_none());
+        }
+
+        #[test]
+        fn id_is_not_returned_if_it_doesnt_exist() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("Project title".into(), project_str).unwrap();
+
+            assert!(project.id().is_none());
+        }
+    }
+
+    mod name {
+        use super::*;
+
+        #[test]
+        fn name_is_returned_if_it_exists() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+
+            assert_eq!(project.name(), Some("Project title"));
+        }
+
+        #[test]
+        fn name_is_not_returned_if_it_doesnt_exist() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("197001010000".into(), project_str).unwrap();
+
+            assert!(project.name().is_none());
+        }
+    }
+
+    mod is_complete {
+        use super::*;
+
+        #[test]
+        fn project_is_complete_if_it_has_tag() {
+            let project_str = "# Project title\n#gtd-project #complete\n";
+            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+
+            assert!(project.is_complete());
+        }
+
+        #[test]
+        fn project_is_not_complete_if_it_doesnt_have_tag() {
+            let project_str = "# Project title\n#gtd-project\n";
+            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+
+            assert!(!project.is_complete());
+        }
+    }
 }
