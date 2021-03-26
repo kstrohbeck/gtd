@@ -228,9 +228,6 @@ pub enum ParseError<'a> {
 
     /// Error when the parser tries to parse a heading that contains invalid events.
     CouldntParseHeading(<Heading as TryFrom<Fragment>>::Error),
-
-    /// Custom error.
-    Custom(String),
 }
 
 impl<'a> fmt::Display for ParseError<'a> {
@@ -242,7 +239,6 @@ impl<'a> fmt::Display for ParseError<'a> {
             Self::CouldntParseHeading(actual) => {
                 write!(f, "expected heading event, got {}", actual)
             }
-            Self::Custom(msg) => write!(f, "{}", msg),
         }
     }
 }
