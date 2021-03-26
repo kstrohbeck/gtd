@@ -1,7 +1,7 @@
 use crate::markdown::{Doc, Fragment, Heading};
-use crate::parser::ParseError;
+use crate::parser;
 use pulldown_cmark::{Event, Tag};
-use std::fmt;
+use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
@@ -18,9 +18,9 @@ impl Project {
     const GTD_PROJECT_TAG: &'static str = "gtd-project";
     const COMPLETE_TAG: &'static str = "complete";
 
-    // TODO: This should return a Result with errors.
-    // TODO: Or more correctly, return a Result<(Project, Vec<Warning>), Error>.
-    pub fn parse(filename: String, text: &str) -> Result<Self, ParseError> {
+    pub fn parse<S: Into<String>>(filename: S, text: &str) -> Result<Self, ParseError> {
+        let filename = filename.into();
+
         let filename_split_idx =
             filename
                 .char_indices()
@@ -30,12 +30,12 @@ impl Project {
             title,
             mut tags,
             mut parser,
-        } = Doc::parse(text)?;
+        } = Doc::parse(text).map_err(ParseError::ParseError)?;
 
         let idx = tags
             .iter()
             .position(|s| s == Self::GTD_PROJECT_TAG)
-            .ok_or_else(|| ParseError::Custom("Document doesn't have gtd-project tag".into()))?;
+            .ok_or(ParseError::LacksProjectTag)?;
         tags.remove(idx);
 
         let mut goal = None;
@@ -43,10 +43,10 @@ impl Project {
         let mut actions = None;
 
         while parser.peek().is_some() {
-            let section_heading = parser.parse_heading(2)?;
+            let section_heading = parser.parse_heading(2).map_err(ParseError::ParseError)?;
             let section_title = section_heading
                 .try_as_str()
-                .ok_or_else(|| ParseError::Custom("Non-string section title".into()))?;
+                .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
 
             match &*section_title {
                 "Goal" => goal = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
@@ -57,7 +57,9 @@ impl Project {
                     println!("Warning: Project \"{}\" uses deprecated \"Action Items\" section; rename to \"Actions\".", title_string);
                     actions = parser.parse_tasklist().ok();
                 }
-                t => return Err(ParseError::Custom(format!("Unexpected section \"{}\"", t))),
+                _ => {
+                    return Err(ParseError::HasUnexpectedSection(section_heading));
+                }
             }
         }
 
@@ -96,6 +98,27 @@ impl fmt::Display for Project {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParseError<'a> {
+    LacksProjectTag,
+    HasSectionWithNonStringTitle(Heading),
+    HasUnexpectedSection(Heading),
+    ParseError(parser::ParseError<'a>),
+}
+
+impl<'a> fmt::Display for ParseError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::LacksProjectTag => write!(f, "lacks project tag"),
+            Self::HasSectionWithNonStringTitle(_) => write!(f, "has section with non-string title"),
+            Self::HasUnexpectedSection(_) => write!(f, "has unexpected section"),
+            Self::ParseError(p) => write!(f, "{}", p),
+        }
+    }
+}
+
+impl<'a> Error for ParseError<'a> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,21 +127,21 @@ mod tests {
     #[test]
     fn basic_project_parses() {
         let project_str = "# Project title\n#gtd-project\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str);
+        let project = Project::parse("197001010000 Project title", project_str);
         assert!(project.is_ok());
     }
 
     #[test]
     fn strings_without_gtd_project_tag_dont_parse() {
         let project_str = "# Project title\n#other #tags\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str);
+        let project = Project::parse("197001010000 Project title", project_str);
         assert!(project.is_err());
     }
 
     #[test]
     fn simple_title_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.title,
             Fragment::from_events(vec![Event::Text("Project title".into())])
@@ -130,7 +153,7 @@ mod tests {
     #[test]
     fn complex_title_is_parsed() {
         let project_str = "# Title with `code`\n#gtd-project\n";
-        let project = Project::parse("197001010000 Title with code".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Title with code", project_str).unwrap();
         assert_eq!(
             project.title,
             Fragment::from_events(vec![
@@ -145,14 +168,14 @@ mod tests {
     #[test]
     fn gtd_project_tag_is_not_in_tags() {
         let project_str = "# Project title\n#gtd-project #other #tags\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert!(!project.tags.contains(&String::from("gtd-project")));
     }
 
     #[test]
     fn tags_are_parsed() {
         let project_str = "# Project title\n#gtd-project #other #tags\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.tags,
             vec![String::from("other"), String::from("tags")]
@@ -162,7 +185,7 @@ mod tests {
     #[test]
     fn goal_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n## Goal\nGoal text\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.goal,
             Some(Fragment::from_events(vec![
@@ -176,7 +199,7 @@ mod tests {
     #[test]
     fn goal_is_parsed_after_other_sections() {
         let project_str = "# Project title\n#gtd-project\n## Info\nFoo\n## Goal\nGoal text\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.goal,
             Some(Fragment::from_events(vec![
@@ -190,7 +213,7 @@ mod tests {
     #[test]
     fn info_is_parsed() {
         let project_str = "# Project title\n#gtd-project\n## Info\nFoo\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.info,
             Some(Fragment::from_events(vec![
@@ -205,7 +228,7 @@ mod tests {
     fn actions_are_parsed() {
         let project_str =
             "# Project title\n#gtd-project\n## Actions\n- [x] First action\n- [ ] Second action\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.actions,
             vec![
@@ -224,7 +247,7 @@ mod tests {
     #[test]
     fn things_are_parsed_even_in_reverse_order() {
         let project_str = "# Project title\n#gtd-project\n## Actions\n- [x] First action\n- [ ] Second action\n\n## Info\n\nFoo\n\n## Goal\n\nGoal text\n";
-        let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
         assert_eq!(
             project.goal,
@@ -265,7 +288,7 @@ mod tests {
         #[test]
         fn id_is_returned_if_it_exists() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+            let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
             assert_eq!(project.id(), Some("197001010000"));
         }
@@ -273,7 +296,7 @@ mod tests {
         #[test]
         fn id_is_not_returned_if_in_wrong_format() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("19700101 Project title".into(), project_str).unwrap();
+            let project = Project::parse("19700101 Project title", project_str).unwrap();
 
             assert!(project.id().is_none());
         }
@@ -281,7 +304,7 @@ mod tests {
         #[test]
         fn id_is_not_returned_if_it_doesnt_exist() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("Project title".into(), project_str).unwrap();
+            let project = Project::parse("Project title", project_str).unwrap();
 
             assert!(project.id().is_none());
         }
@@ -293,7 +316,7 @@ mod tests {
         #[test]
         fn name_is_returned_if_it_exists() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+            let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
             assert_eq!(project.name(), Some("Project title"));
         }
@@ -301,7 +324,7 @@ mod tests {
         #[test]
         fn name_is_not_returned_if_it_doesnt_exist() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("197001010000".into(), project_str).unwrap();
+            let project = Project::parse("197001010000", project_str).unwrap();
 
             assert!(project.name().is_none());
         }
@@ -313,7 +336,7 @@ mod tests {
         #[test]
         fn project_is_complete_if_it_has_tag() {
             let project_str = "# Project title\n#gtd-project #complete\n";
-            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+            let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
             assert!(project.is_complete());
         }
@@ -321,7 +344,7 @@ mod tests {
         #[test]
         fn project_is_not_complete_if_it_doesnt_have_tag() {
             let project_str = "# Project title\n#gtd-project\n";
-            let project = Project::parse("197001010000 Project title".into(), project_str).unwrap();
+            let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
             assert!(!project.is_complete());
         }
