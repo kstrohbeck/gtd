@@ -69,7 +69,7 @@ fn main() {
                     let are_all_actions_complete = project.actions.iter().all(|(x, _)| *x);
                     if project.status == ProjectStatus::Complete && !are_all_actions_complete {
                         Err(format!(
-                            "{} is marked complete but has at least one uncompleted action",
+                            "{} is complete but has at least one uncompleted action",
                             project
                         ))
                     } else {
@@ -113,19 +113,23 @@ fn main() {
 
                 if !has_active_action {
                     println!(
-                        "{} is in project list but has no actions in action list",
+                        "{} is in progress but has no actions in any context",
                         project
                     );
                 }
             }
 
             for context in &docs.contexts {
+                let ctx_title = context.title.try_as_title_string().unwrap();
                 for action in &context.actions {
                     if let Some(link) = &action.project {
                         let link = link as &str;
                         if let Some(project) = docs.projects.iter().find(|p| p.filename == link) {
                             if project.status != ProjectStatus::InProgress {
-                                println!("{} is referenced in the action list but is not in the project list", link);
+                                println!(
+                                    "{} has a next action in {} but is not in progress",
+                                    link, ctx_title
+                                );
                             }
 
                             let mut has_action = false;
@@ -133,16 +137,19 @@ fn main() {
                                 if &action.text == act {
                                     has_action = true;
                                     if *done {
-                                        println!("{} has an action marked as done that is in the action list", link);
+                                        println!(
+                                            "{} has a next action in {} that is marked as done",
+                                            link, ctx_title
+                                        );
                                     }
                                 }
                             }
 
                             if !has_action {
-                                println!("{} is referenced in the action list but does not have the referencing action", link);
+                                println!("{} is referenced in {} but does not have the referencing action", link, ctx_title);
                             }
                         } else {
-                            println!("{} is not a valid link to project in action list", link);
+                            println!("{} is not a valid link to project in {}", link, ctx_title);
                         }
                     }
                 }
@@ -155,7 +162,6 @@ fn main() {
 struct Documents {
     projects: Vec<Project>,
     contexts: Vec<Context>,
-    // TODO: Add Waiting For?
 }
 
 impl Documents {
