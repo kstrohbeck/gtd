@@ -1,6 +1,5 @@
 use self::action_list::ActionList;
 use self::project::{Project, Status as ProjectStatus};
-use self::someday_list::SomedayList;
 use argh::FromArgs;
 use std::{collections::HashSet, convert::AsRef, env, fs, path::Path};
 
@@ -8,7 +7,6 @@ mod action_list;
 mod markdown;
 mod parser;
 mod project;
-mod someday_list;
 
 /// Task management application.
 #[derive(Debug, FromArgs)]
@@ -34,11 +32,7 @@ fn main() {
 
     match gtd.subcommand {
         Subcommand::Validate(_v) => {
-            fn validate_project<'a>(
-                project: &'a Project,
-                docs: &'a Documents,
-                ids: &mut HashSet<&'a str>,
-            ) {
+            fn validate_project<'a>(project: &'a Project, ids: &mut HashSet<&'a str>) {
                 fn validate_id<'a>(
                     project: &'a Project,
                     ids: &mut HashSet<&'a str>,
@@ -95,12 +89,10 @@ fn main() {
             }
 
             let docs = Documents::load(&cur_dir);
-            let mut project_links = HashSet::new();
             let mut ids = HashSet::new();
 
             for project in &docs.projects {
-                project_links.insert(project.filename.as_str());
-                validate_project(project, &docs, &mut ids);
+                validate_project(project, &mut ids);
             }
 
             for project in docs
@@ -124,18 +116,6 @@ fn main() {
                         "{} is in project list but has no actions in action list",
                         project
                     );
-                }
-            }
-
-            let mut someday_list_links = HashSet::new();
-
-            for link in docs.someday_list.items.iter().filter_map(|i| i.link()) {
-                if !project_links.contains(link) {
-                    println!("{} is an invalid link in the someday list", link);
-                }
-
-                if !someday_list_links.insert(link) {
-                    println!("{} is duplicated in the someday list", link);
                 }
             }
 
@@ -174,8 +154,6 @@ fn main() {
 #[derive(Debug)]
 struct Documents {
     action_list: ActionList,
-    //project_list: ProjectList,
-    someday_list: SomedayList,
     projects: Vec<Project>,
 }
 
@@ -185,20 +163,6 @@ impl Documents {
             let path = cur_dir.as_ref().join("Next Actions.md");
             let text = fs::read_to_string(&path).unwrap();
             ActionList::parse(&text).unwrap()
-        }
-
-        /*
-        fn load_project_list<P: AsRef<Path>>(cur_dir: P) -> ProjectList {
-            let path = cur_dir.as_ref().join("Projects.md");
-            let text = fs::read_to_string(&path).unwrap();
-            ProjectList::parse(&text).unwrap()
-        }
-        */
-
-        fn load_someday_list<P: AsRef<Path>>(cur_dir: P) -> SomedayList {
-            let path = cur_dir.as_ref().join("Someday.md");
-            let text = fs::read_to_string(&path).unwrap();
-            SomedayList::parse(&text).unwrap()
         }
 
         fn load_projects<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = Project> {
@@ -218,8 +182,6 @@ impl Documents {
         let cur_dir = cur_dir.as_ref();
         Self {
             action_list: load_action_list(cur_dir),
-            //project_list: load_project_list(cur_dir),
-            someday_list: load_someday_list(cur_dir),
             projects: load_projects(cur_dir).collect(),
         }
     }
