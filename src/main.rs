@@ -1,9 +1,9 @@
-use self::action_list::ActionList;
+use self::context::Context;
 use self::project::{Project, Status as ProjectStatus};
 use argh::FromArgs;
 use std::{collections::HashSet, convert::AsRef, env, fs, path::Path};
 
-mod action_list;
+mod context;
 mod markdown;
 mod parser;
 mod project;
@@ -102,7 +102,7 @@ fn main() {
             {
                 let mut has_active_action = false;
                 for action in project.actions.iter().map(|(_, f)| f) {
-                    for ctx in &docs.action_list.contexts {
+                    for ctx in &docs.contexts {
                         for act in &ctx.actions {
                             if action == &act.text {
                                 has_active_action = true;
@@ -119,7 +119,7 @@ fn main() {
                 }
             }
 
-            for context in &docs.action_list.contexts {
+            for context in &docs.contexts {
                 for action in &context.actions {
                     if let Some(link) = &action.project {
                         let link = link as &str;
@@ -153,18 +153,13 @@ fn main() {
 
 #[derive(Debug)]
 struct Documents {
-    action_list: ActionList,
     projects: Vec<Project>,
+    contexts: Vec<Context>,
+    // TODO: Add Waiting For?
 }
 
 impl Documents {
     fn load<P: AsRef<Path>>(cur_dir: P) -> Self {
-        fn load_action_list<P: AsRef<Path>>(cur_dir: P) -> ActionList {
-            let path = cur_dir.as_ref().join("Next Actions.md");
-            let text = fs::read_to_string(&path).unwrap();
-            ActionList::parse(&text).unwrap()
-        }
-
         fn load_projects<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = Project> {
             let project_dir = cur_dir.as_ref().join("Projects");
             fs::read_dir(&project_dir).unwrap().flat_map(|e| {
@@ -179,9 +174,23 @@ impl Documents {
             })
         }
 
+        fn load_contexts<P: AsRef<Path>>(cur_dir: P) -> impl Iterator<Item = Context> {
+            let context_dir = cur_dir.as_ref().join("Contexts");
+            fs::read_dir(&context_dir).unwrap().flat_map(|e| {
+                let path = e.ok()?.path();
+                if path.is_dir() {
+                    return None;
+                }
+
+                let text = fs::read_to_string(&path).ok()?;
+                let name = path.file_stem()?.to_str()?.to_string();
+                Context::parse(name, &text).ok()
+            })
+        }
+
         let cur_dir = cur_dir.as_ref();
         Self {
-            action_list: load_action_list(cur_dir),
+            contexts: load_contexts(cur_dir).collect(),
             projects: load_projects(cur_dir).collect(),
         }
     }
