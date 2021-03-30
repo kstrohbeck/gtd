@@ -3,6 +3,10 @@ use crate::parser;
 use pulldown_cmark::{Event, Tag};
 use std::{convert::TryFrom, error::Error, fmt};
 
+const SOMEDAY_TAG: &str = "someday";
+const IN_PROGRESS_TAG: &str = "in-progress";
+const COMPLETE_TAG: &str = "complete";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
     pub filename: String,
@@ -16,10 +20,6 @@ pub struct Project {
 }
 
 impl Project {
-    const SOMEDAY_TAG: &'static str = "someday";
-    const IN_PROGRESS_TAG: &'static str = "in-progress";
-    const COMPLETE_TAG: &'static str = "complete";
-
     pub fn parse<S: Into<String>>(filename: S, text: &str) -> Result<Self, ParseError> {
         let filename = filename.into();
 
@@ -111,9 +111,9 @@ impl TryFrom<&str> for Status {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
-            "someday" => Ok(Self::Someday),
-            "in-progress" => Ok(Self::InProgress),
-            "complete" => Ok(Self::Complete),
+            SOMEDAY_TAG => Ok(Self::Someday),
+            IN_PROGRESS_TAG => Ok(Self::InProgress),
+            COMPLETE_TAG => Ok(Self::Complete),
             _ => Err(()),
         }
     }
