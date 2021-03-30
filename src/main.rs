@@ -1,5 +1,5 @@
 use self::action_list::ActionList;
-use self::project::Project;
+use self::project::{Project, Status as ProjectStatus};
 use self::project_list::ProjectList;
 use self::someday_list::SomedayList;
 use argh::FromArgs;
@@ -84,7 +84,7 @@ fn main() {
                     match (
                         is_in_project_list,
                         is_in_someday_list,
-                        project.is_complete(),
+                        project.status == ProjectStatus::Complete,
                     ) {
                         (false, false, false) => Err(format!(
                             "{} is not marked complete and is not in the project or someday lists",
@@ -112,7 +112,7 @@ fn main() {
 
                 fn verify_all_actions_complete(project: &Project) -> Result<(), String> {
                     let are_all_actions_complete = project.actions.iter().all(|(x, _)| *x);
-                    if project.is_complete() && !are_all_actions_complete {
+                    if project.status == ProjectStatus::Complete && !are_all_actions_complete {
                         Err(format!(
                             "{} is marked complete but has at least one uncompleted action",
                             project
