@@ -89,6 +89,10 @@ impl Fragment {
     pub fn as_events(&self) -> &[Event<'static>] {
         &self.0[..]
     }
+
+    pub fn into_events(self) -> Vec<Event<'static>> {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

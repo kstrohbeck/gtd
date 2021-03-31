@@ -1,6 +1,6 @@
 use crate::markdown::{Doc, Fragment, Heading};
-use crate::parser;
-use pulldown_cmark::{Event, Tag};
+use crate::parser::{self, Parser};
+use pulldown_cmark::{CowStr, Event, Tag};
 use std::{convert::TryFrom, error::Error, fmt};
 
 const SOMEDAY_TAG: &str = "someday";
@@ -16,7 +16,7 @@ pub struct Project {
     pub status: Status,
     pub goal: Option<Fragment>,
     pub info: Option<Fragment>,
-    pub actions: Vec<(bool, Fragment)>,
+    pub actions: Actions,
 }
 
 impl Project {
@@ -55,11 +55,11 @@ impl Project {
             match &*section_title {
                 "Goal" => goal = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
                 "Info" => info = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
-                "Actions" => actions = parser.parse_tasklist().ok(),
+                "Actions" => actions = Actions::parse(&mut parser).ok(),
                 "Action Items" => {
                     let title_string = title.try_as_title_string().unwrap();
                     println!("Warning: Project \"{}\" uses deprecated \"Action Items\" section; rename to \"Actions\".", title_string);
-                    actions = parser.parse_tasklist().ok();
+                    actions = Actions::parse(&mut parser).ok();
                 }
                 _ => {
                     return Err(ParseError::HasUnexpectedSection(section_heading));
@@ -75,7 +75,7 @@ impl Project {
             status,
             goal,
             info,
-            actions: actions.unwrap_or_else(Vec::new),
+            actions: actions.unwrap_or_else(Actions::default),
         })
     }
 
@@ -120,6 +120,142 @@ impl TryFrom<&str> for Status {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Actions {
+    active: Vec<Action>,
+    upcoming: Vec<Action>,
+    complete: Vec<Action>,
+}
+
+impl Actions {
+    fn parse<'a>(parser: &mut Parser<'a>) -> Result<Self, ParseError<'a>> {
+        let mut active = Vec::new();
+        let mut upcoming = Vec::new();
+        let mut complete = Vec::new();
+
+        while let Some(Event::Start(Tag::Heading(3))) = parser.peek() {
+            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+            enum ActionsType {
+                Active,
+                Upcoming,
+                Complete,
+            }
+
+            let section_heading = parser.parse_heading(3).map_err(ParseError::ParseError)?;
+            let section_title = section_heading
+                .try_as_str()
+                .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
+
+            let actions_type = match &*section_title {
+                "Active" => ActionsType::Active,
+                "Upcoming" => ActionsType::Upcoming,
+                "Complete" => ActionsType::Complete,
+                _ => {
+                    return Err(ParseError::HasUnexpectedSection(section_heading));
+                }
+            };
+
+            println!("Parsing {:?}", actions_type);
+
+            let actions = parser
+                .parse_list()
+                .map_err(ParseError::ParseError)?
+                .into_iter()
+                .map(Action::from_fragment)
+                .collect();
+
+            println!("Parsing {:?}", actions_type);
+
+            match actions_type {
+                ActionsType::Active => active = actions,
+                ActionsType::Upcoming => upcoming = actions,
+                ActionsType::Complete => complete = actions,
+            }
+        }
+
+        Ok(Self {
+            active,
+            upcoming,
+            complete,
+        })
+    }
+}
+
+impl Default for Actions {
+    fn default() -> Self {
+        Self {
+            active: Vec::new(),
+            upcoming: Vec::new(),
+            complete: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Action {
+    text: Fragment,
+    id: Option<String>,
+}
+
+impl Action {
+    fn from_fragment(frag: Fragment) -> Self {
+        // For the action to have a reference, we need the last event of the fragment to be a Text
+        // with it as a suffix.
+
+        fn split_id<'a>(ev: &Event<'a>) -> Option<(Option<Event<'a>>, String)> {
+            let text = match ev {
+                Event::Text(t) => t,
+                _ => return None,
+            };
+
+            let idx = text.rfind('^')?;
+            let id = &text[idx + 1..];
+            if id.len() != 6 {
+                return None;
+            }
+
+            let rest = match text[..idx].trim_end() {
+                "" => None,
+                s => Some(Event::Text(CowStr::Boxed(s.to_string().into_boxed_str()))),
+            };
+
+            let id = id.to_string();
+
+            Some((rest, id))
+        }
+
+        let mut evs = frag.into_events();
+
+        let last_ev = match evs.pop() {
+            Some(ev) => ev,
+            None => {
+                return Action {
+                    text: Fragment::from_events(evs),
+                    id: None,
+                }
+            }
+        };
+
+        let id = match split_id(&last_ev) {
+            Some((ev, id)) => {
+                if let Some(ev) = ev {
+                    evs.push(ev);
+                }
+                Some(id)
+            }
+            None => {
+                evs.push(last_ev);
+                None
+            }
+        };
+
+        Action {
+            text: Fragment::from_events(evs),
+            id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'a> {
     MissingStatus,
     HasSectionWithNonStringTitle(Heading),
@@ -146,6 +282,113 @@ impl<'a> Error for ParseError<'a> {}
 mod tests {
     use super::*;
     use std::convert::TryInto;
+
+    mod action {
+        use super::*;
+
+        #[test]
+        fn text_action_with_id_has_correct_id() {
+            let frag = Fragment::from_events(vec![Event::Text("action text ^abcdef".into())]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(action.id, Some(String::from("abcdef")));
+        }
+
+        #[test]
+        fn text_action_with_id_has_correct_text() {
+            let frag = Fragment::from_events(vec![Event::Text("action text ^abcdef".into())]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(
+                action.text,
+                Fragment::from_events(vec![Event::Text("action text".into())])
+            );
+        }
+
+        #[test]
+        fn text_action_without_id_has_no_id() {
+            let frag = Fragment::from_events(vec![Event::Text("action text".into())]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(action.id, None);
+        }
+
+        #[test]
+        fn text_action_without_id_has_correct_text() {
+            let frag = Fragment::from_events(vec![Event::Text("action text".into())]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(
+                action.text,
+                Fragment::from_events(vec![Event::Text("action text".into())])
+            );
+        }
+
+        #[test]
+        fn complex_action_with_id_has_correct_id() {
+            let frag = Fragment::from_events(vec![
+                Event::Text("Something with ".into()),
+                Event::Start(Tag::Emphasis),
+                Event::Text("emphasis".into()),
+                Event::End(Tag::Emphasis),
+                Event::Text(" ^abcdef".into()),
+            ]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(action.id, Some(String::from("abcdef")));
+        }
+
+        #[test]
+        fn complex_action_with_id_has_correct_text() {
+            let frag = Fragment::from_events(vec![
+                Event::Text("Something with ".into()),
+                Event::Start(Tag::Emphasis),
+                Event::Text("emphasis".into()),
+                Event::End(Tag::Emphasis),
+                Event::Text(" ^abcdef".into()),
+            ]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(
+                action.text,
+                Fragment::from_events(vec![
+                    Event::Text("Something with ".into()),
+                    Event::Start(Tag::Emphasis),
+                    Event::Text("emphasis".into()),
+                    Event::End(Tag::Emphasis),
+                ])
+            );
+        }
+
+        #[test]
+        fn complex_action_without_id_has_no_id() {
+            let frag = Fragment::from_events(vec![
+                Event::Text("Something with ".into()),
+                Event::Start(Tag::Emphasis),
+                Event::Text("emphasis".into()),
+                Event::End(Tag::Emphasis),
+                Event::Text(" ".into()),
+            ]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(action.id, None);
+        }
+
+        #[test]
+        fn complex_action_without_id_has_correct_text() {
+            let frag = Fragment::from_events(vec![
+                Event::Text("Something with ".into()),
+                Event::Start(Tag::Emphasis),
+                Event::Text("emphasis".into()),
+                Event::End(Tag::Emphasis),
+                Event::Text(" ".into()),
+            ]);
+            let action = Action::from_fragment(frag);
+            assert_eq!(
+                action.text,
+                Fragment::from_events(vec![
+                    Event::Text("Something with ".into()),
+                    Event::Start(Tag::Emphasis),
+                    Event::Text("emphasis".into()),
+                    Event::End(Tag::Emphasis),
+                    Event::Text(" ".into()),
+                ])
+            );
+        }
+    }
 
     #[test]
     fn basic_project_parses() {
@@ -271,26 +514,37 @@ mod tests {
     #[test]
     fn actions_are_parsed() {
         let project_str =
-            "# Project title\n#in-progress\n## Actions\n- [x] First action\n- [ ] Second action\n";
+            "# Project title\n#in-progress\n## Actions\n\n### Active\n\n- First action\n\n### Upcoming\n\n- Second action ^abcdef\n- Third action `with code` ^fedcba\n";
         let project = Project::parse("197001010000 Project title", project_str).unwrap();
         assert_eq!(
             project.actions,
-            vec![
-                (
-                    true,
-                    Fragment::from_events(vec![Event::Text("First action".into())])
-                ),
-                (
-                    false,
-                    Fragment::from_events(vec![Event::Text("Second action".into())])
-                ),
-            ],
+            Actions {
+                active: vec![Action {
+                    text: Fragment::from_events(vec![Event::Text("First action".into())]),
+                    id: None
+                }],
+                upcoming: vec![
+                    Action {
+                        text: Fragment::from_events(vec![Event::Text("Second action".into())]),
+                        id: Some(String::from("abcdef"))
+                    },
+                    Action {
+                        text: Fragment::from_events(vec![
+                            Event::Text("Third action ".into()),
+                            Event::Code("with code".into())
+                        ]),
+                        id: Some(String::from("fedcba"))
+                    }
+                ],
+                complete: vec![],
+            }
         );
     }
 
     #[test]
     fn things_are_parsed_even_in_reverse_order() {
-        let project_str = "# Project title\n#in-progress\n## Actions\n- [x] First action\n- [ ] Second action\n\n## Info\n\nFoo\n\n## Goal\n\nGoal text\n";
+        let project_str =
+            "# Project title\n#in-progress\n## Actions\n\n### Active\n\n- First action\n\n### Upcoming\n\n- Second action ^abcdef\n- Third action `with code` ^fedcba\n\n## Info\n\nFoo\n\n## Goal\n\nGoal text\n";
         let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
         assert_eq!(
@@ -313,16 +567,26 @@ mod tests {
 
         assert_eq!(
             project.actions,
-            vec![
-                (
-                    true,
-                    Fragment::from_events(vec![Event::Text("First action".into())])
-                ),
-                (
-                    false,
-                    Fragment::from_events(vec![Event::Text("Second action".into())])
-                ),
-            ],
+            Actions {
+                active: vec![Action {
+                    text: Fragment::from_events(vec![Event::Text("First action".into())]),
+                    id: None
+                }],
+                upcoming: vec![
+                    Action {
+                        text: Fragment::from_events(vec![Event::Text("Second action".into())]),
+                        id: Some(String::from("abcdef"))
+                    },
+                    Action {
+                        text: Fragment::from_events(vec![
+                            Event::Text("Third action ".into()),
+                            Event::Code("with code".into())
+                        ]),
+                        id: Some(String::from("fedcba"))
+                    }
+                ],
+                complete: vec![],
+            }
         );
     }
 
