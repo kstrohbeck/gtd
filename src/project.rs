@@ -147,16 +147,12 @@ impl Actions {
                 }
             };
 
-            println!("Parsing {:?}", actions_type);
-
             let actions = parser
                 .parse_list()
                 .map_err(ParseError::ParseError)?
                 .into_iter()
                 .map(Action::from_fragment)
                 .collect();
-
-            println!("Parsing {:?}", actions_type);
 
             match actions_type {
                 ActionStatus::Active => active = actions,
