@@ -82,18 +82,6 @@ impl<'a> Parser<'a> {
         )
     }
 
-    /// Parses a task marker checkbox.
-    fn parse_task_marker(&mut self) -> Result<bool, ParseError<'a>> {
-        self.parse_general(
-            |ev| matches!(ev, &Event::TaskListMarker(_)),
-            |ev| match ev {
-                Event::TaskListMarker(b) => Some(b),
-                _ => None,
-            },
-            || Event::TaskListMarker(false),
-        )
-    }
-
     /// Parses a start `tag`.
     fn parse_start(&mut self, tag: &Tag<'a>) -> Result<Event<'a>, ParseError<'a>> {
         self.parse_general(
@@ -182,20 +170,6 @@ impl<'a> Parser<'a> {
     /// Parses a single item in a list.
     fn parse_item(&mut self) -> Result<Fragment, ParseError<'a>> {
         self.parse_element(&Tag::Item, |p| p.parse_until(Event::End(Tag::Item)))
-    }
-
-    /// Parses an unordered list of task items (checkboxes followed by a description.)
-    pub fn parse_tasklist(&mut self) -> Result<Vec<(bool, Fragment)>, ParseError<'a>> {
-        self.parse_general_list(None, Self::parse_task)
-    }
-
-    /// Parses a single task in a task list.
-    fn parse_task(&mut self) -> Result<(bool, Fragment), ParseError<'a>> {
-        self.parse_element_res(&Tag::Item, |p| {
-            let b = p.parse_task_marker()?;
-            let text = p.parse_until(Event::End(Tag::Item));
-            Ok((b, text))
-        })
     }
 
     /// Parses a list of hashtags.
@@ -454,57 +428,6 @@ mod tests {
             let text = "- one\n- two\n  `three`\n\n---";
             let mut parser = Parser::new(text);
             let _list = parser.parse_list();
-            let next = parser.next();
-            assert_eq!(next, Some(Event::Rule));
-        }
-    }
-
-    mod parse_tasklist {
-        use super::*;
-
-        #[test]
-        fn single_element_tasklist_is_parsed() {
-            let text = "- [ ] one";
-            let mut parser = Parser::new(text);
-            let list = parser.parse_tasklist();
-            assert_eq!(
-                list,
-                Ok(vec![(
-                    false,
-                    Fragment::from_events(vec![Event::Text("one".into())])
-                )])
-            );
-        }
-
-        #[test]
-        fn multi_element_tasklist_is_parsed() {
-            let text = "- [ ] one\n- [x] two\n      `three`";
-            let mut parser = Parser::new(text);
-            let list = parser.parse_tasklist();
-            assert_eq!(
-                list,
-                Ok(vec![
-                    (
-                        false,
-                        Fragment::from_events(vec![Event::Text("one".into())])
-                    ),
-                    (
-                        true,
-                        Fragment::from_events(vec![
-                            Event::Text("two".into()),
-                            Event::SoftBreak,
-                            Event::Code("three".into()),
-                        ])
-                    )
-                ])
-            );
-        }
-
-        #[test]
-        fn element_after_tasklist_is_preserved() {
-            let text = "- [ ] one\n- [x] two\n      `three`\n\n---";
-            let mut parser = Parser::new(text);
-            let _list = parser.parse_tasklist();
             let next = parser.next();
             assert_eq!(next, Some(Event::Rule));
         }
