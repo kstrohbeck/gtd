@@ -254,6 +254,7 @@ pub fn as_obsidian_link<'a>(v: &[Event<'a>]) -> Option<CowStr<'a>> {
 }
 
 // TODO: Make these CowStrs?
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockRef {
     pub link: String,
     pub id: String,
