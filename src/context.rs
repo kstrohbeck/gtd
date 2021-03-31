@@ -1,4 +1,4 @@
-use crate::markdown::{as_obsidian_link, Doc, Fragment, Heading};
+use crate::markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading};
 use crate::parser::ParseError;
 use pulldown_cmark::{CowStr, Event};
 
@@ -36,6 +36,22 @@ impl Context {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Action {
+    Literal(Fragment),
+    Reference(BlockRef),
+}
+
+impl Action {
+    pub fn from_fragment(fragment: Fragment) -> Self {
+        match as_embedded_block_ref(fragment.as_events()) {
+            Some(block_ref) => Self::Reference(block_ref),
+            None => Self::Literal(fragment),
+        }
+    }
+}
+
+/*
+#[derive(Debug, Clone, PartialEq)]
 pub struct Action {
     pub text: Fragment,
     pub project: Option<CowStr<'static>>,
@@ -66,6 +82,7 @@ impl Action {
         }
     }
 }
+*/
 
 #[cfg(test)]
 mod tests {
@@ -86,19 +103,16 @@ mod tests {
 
     #[test]
     fn actions_parse() {
-        let text = "# @computer\n\n- foo\n- bar\n  [[baz]]";
+        let text = "# @computer\n\n- foo\n- ![[bar#^baz]]\n";
         let context = Context::parse("@computer", text).unwrap();
         assert_eq!(
             context.actions,
             vec![
-                Action {
-                    text: Fragment::from_events(vec![Event::Text("foo".into())]),
-                    project: None,
-                },
-                Action {
-                    text: Fragment::from_events(vec![Event::Text("bar".into())]),
-                    project: Some(CowStr::Borrowed("baz")),
-                }
+                Action::Literal(Fragment::from_events(vec![Event::Text("foo".into())])),
+                Action::Reference(BlockRef {
+                    link: String::from("bar"),
+                    id: String::from("baz")
+                }),
             ]
         );
     }
