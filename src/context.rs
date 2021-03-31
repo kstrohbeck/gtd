@@ -50,40 +50,6 @@ impl Action {
     }
 }
 
-/*
-#[derive(Debug, Clone, PartialEq)]
-pub struct Action {
-    pub text: Fragment,
-    pub project: Option<CowStr<'static>>,
-}
-
-impl Action {
-    pub fn from_fragment(fragment: Fragment) -> Self {
-        // Try to find the last soft break.
-        let soft_break_idx = fragment
-            .as_events()
-            .iter()
-            .rposition(|e| e == &Event::SoftBreak);
-
-        let with_project = soft_break_idx.and_then(|idx| {
-            let (text, link) = fragment.as_events().split_at(idx);
-            as_obsidian_link(&link[1..]).map(|link| (text, link))
-        });
-
-        match with_project {
-            Some((text, link)) => Action {
-                text: Fragment::from_events(text.to_vec()),
-                project: Some(link),
-            },
-            None => Action {
-                text: fragment,
-                project: None,
-            },
-        }
-    }
-}
-*/
-
 #[cfg(test)]
 mod tests {
     use super::*;

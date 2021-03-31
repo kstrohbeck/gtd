@@ -133,22 +133,15 @@ impl Actions {
         let mut complete = Vec::new();
 
         while let Some(Event::Start(Tag::Heading(3))) = parser.peek() {
-            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-            enum ActionsType {
-                Active,
-                Upcoming,
-                Complete,
-            }
-
             let section_heading = parser.parse_heading(3).map_err(ParseError::ParseError)?;
             let section_title = section_heading
                 .try_as_str()
                 .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
 
             let actions_type = match &*section_title {
-                "Active" => ActionsType::Active,
-                "Upcoming" => ActionsType::Upcoming,
-                "Complete" => ActionsType::Complete,
+                "Active" => ActionStatus::Active,
+                "Upcoming" => ActionStatus::Upcoming,
+                "Complete" => ActionStatus::Complete,
                 _ => {
                     return Err(ParseError::HasUnexpectedSection(section_heading));
                 }
@@ -166,9 +159,9 @@ impl Actions {
             println!("Parsing {:?}", actions_type);
 
             match actions_type {
-                ActionsType::Active => active = actions,
-                ActionsType::Upcoming => upcoming = actions,
-                ActionsType::Complete => complete = actions,
+                ActionStatus::Active => active = actions,
+                ActionStatus::Upcoming => upcoming = actions,
+                ActionStatus::Complete => complete = actions,
             }
         }
 
@@ -177,6 +170,18 @@ impl Actions {
             upcoming,
             complete,
         })
+    }
+
+    pub fn actions(&self) -> impl Iterator<Item = (&Action, ActionStatus)> {
+        let active = self.active.iter().map(|a| (a, ActionStatus::Active));
+        let upcoming = self.upcoming.iter().map(|a| (a, ActionStatus::Upcoming));
+        let complete = self.complete.iter().map(|a| (a, ActionStatus::Complete));
+        active.chain(upcoming).chain(complete)
+    }
+
+    pub fn get_action(&self, id: &str) -> Option<(&Action, ActionStatus)> {
+        self.actions()
+            .find(|(a, _)| matches!(&a.id, Some(x) if x == id))
     }
 }
 
@@ -188,6 +193,12 @@ impl Default for Actions {
             complete: Vec::new(),
         }
     }
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionStatus {
+    Active,
+    Upcoming,
+    Complete,
 }
 
 #[derive(Debug, Clone, PartialEq)]

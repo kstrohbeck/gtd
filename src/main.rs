@@ -1,5 +1,5 @@
-use self::context::Context;
-use self::project::{Project, Status as ProjectStatus};
+use self::context::{Action as ContextAction, Context};
+use self::project::{ActionStatus, Project, Status as ProjectStatus};
 use argh::FromArgs;
 use std::{
     collections::HashSet,
@@ -72,7 +72,10 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
         }
 
         fn verify_all_actions_complete(project: &Project) -> Result<(), String> {
-            let are_all_actions_complete = project.actions.iter().all(|(x, _)| *x);
+            let are_all_actions_complete = project
+                .actions
+                .actions()
+                .all(|(_, status)| status == ActionStatus::Complete);
             if project.status == ProjectStatus::Complete && !are_all_actions_complete {
                 Err(format!(
                     "{} is complete but has at least one uncompleted action",
@@ -106,16 +109,12 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
         .iter()
         .filter(|p| p.status == ProjectStatus::InProgress)
     {
-        let mut has_active_action = false;
-        for action in project.actions.iter().map(|(_, f)| f) {
-            for ctx in &docs.contexts {
-                for act in &ctx.actions {
-                    if action == &act.text {
-                        has_active_action = true;
-                    }
-                }
-            }
-        }
+        let mut has_active_action = project
+            .actions
+            .actions()
+            .filter(|(_, s)| s == &ActionStatus::Active)
+            .count()
+            >= 1;
 
         if !has_active_action {
             println!(
@@ -127,6 +126,41 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
 
     for context in &docs.contexts {
         let ctx_title = context.title.try_as_title_string().unwrap();
+        let linked_actions = context.actions.iter().filter_map(|a| match a {
+            ContextAction::Reference(block_ref) => Some(block_ref),
+            ContextAction::Literal(_) => None,
+        });
+        for action in linked_actions {
+            if let Some(project) = docs.projects.iter().find(|p| p.filename == action.link) {
+                if project.status != ProjectStatus::InProgress {
+                    println!(
+                        "{} has a next action in {} but is not in progress",
+                        action.link, ctx_title
+                    );
+                }
+
+                if let Some((act, act_status)) = project.actions.get_action(&action.id) {
+                    if act_status != ActionStatus::Active {
+                        println!(
+                            "{} has a next action in {} that isn't in Active",
+                            action.link, ctx_title
+                        );
+                    }
+                } else {
+                    println!(
+                        "{} is referenced in {} but does not have the referencing action",
+                        action.link, ctx_title
+                    );
+                }
+            } else {
+                println!(
+                    "{} is not a valid link to project in {}",
+                    action.link, ctx_title
+                );
+            }
+        }
+
+        /*
         for action in &context.actions {
             if let Some(link) = &action.project {
                 let link = link as &str;
@@ -162,6 +196,7 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
                 }
             }
         }
+        */
     }
 }
 
