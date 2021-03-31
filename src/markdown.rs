@@ -124,7 +124,6 @@ impl Heading {
     }
 }
 
-// TODO: Have an actual error type.
 impl TryFrom<Fragment> for Heading {
     type Error = HeadingEventError<'static>;
 
@@ -229,42 +228,13 @@ impl<'a> fmt::Display for HeadingTagError<'a> {
 
 impl<'a> Error for HeadingTagError<'a> {}
 
-pub fn as_obsidian_link<'a>(v: &[Event<'a>]) -> Option<CowStr<'a>> {
-    if v.len() != 5 {
-        return None;
-    }
-
-    // Check for brackets.
-    for i in [0, 1].iter() {
-        match &v[*i] {
-            Event::Text(s) if &**s == "[" => {}
-            _ => return None,
-        }
-    }
-
-    let text = match &v[2] {
-        Event::Text(s) => s.clone(),
-        _ => return None,
-    };
-
-    for i in [3, 4].iter() {
-        match &v[*i] {
-            Event::Text(s) if &**s == "]" => {}
-            _ => return None,
-        }
-    }
-
-    Some(text)
-}
-
-// TODO: Make these CowStrs?
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockRef {
     pub link: String,
     pub id: String,
 }
 
-pub fn as_embedded_block_ref<'a>(v: &[Event<'a>]) -> Option<BlockRef> {
+pub fn as_embedded_block_ref(v: &[Event]) -> Option<BlockRef> {
     if v.len() != 5 {
         return None;
     }

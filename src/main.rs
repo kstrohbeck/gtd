@@ -109,7 +109,7 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
         .iter()
         .filter(|p| p.status == ProjectStatus::InProgress)
     {
-        let mut has_active_action = project
+        let has_active_action = project
             .actions
             .actions()
             .filter(|(_, s)| s == &ActionStatus::Active)
@@ -139,7 +139,7 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
                     );
                 }
 
-                if let Some((act, act_status)) = project.actions.get_action(&action.id) {
+                if let Some((_act, act_status)) = project.actions.get_action(&action.id) {
                     if act_status != ActionStatus::Active {
                         println!(
                             "{} has a next action in {} that isn't in Active",
@@ -159,44 +159,6 @@ fn validate(_opts: Validate, cur_dir: PathBuf) {
                 );
             }
         }
-
-        /*
-        for action in &context.actions {
-            if let Some(link) = &action.project {
-                let link = link as &str;
-                if let Some(project) = docs.projects.iter().find(|p| p.filename == link) {
-                    if project.status != ProjectStatus::InProgress {
-                        println!(
-                            "{} has a next action in {} but is not in progress",
-                            link, ctx_title
-                        );
-                    }
-
-                    let mut has_action = false;
-                    for (done, act) in &project.actions {
-                        if &action.text == act {
-                            has_action = true;
-                            if *done {
-                                println!(
-                                    "{} has a next action in {} that is marked as done",
-                                    link, ctx_title
-                                );
-                            }
-                        }
-                    }
-
-                    if !has_action {
-                        println!(
-                            "{} is referenced in {} but does not have the referencing action",
-                            link, ctx_title
-                        );
-                    }
-                } else {
-                    println!("{} is not a valid link to project in {}", link, ctx_title);
-                }
-            }
-        }
-        */
     }
 }
 

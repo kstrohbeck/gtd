@@ -1,6 +1,5 @@
 use crate::markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading};
 use crate::parser::ParseError;
-use pulldown_cmark::{CowStr, Event};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Context {
@@ -53,6 +52,7 @@ impl Action {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pulldown_cmark::Event;
     use std::convert::TryInto;
 
     #[test]
