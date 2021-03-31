@@ -172,6 +172,30 @@ impl<'a> Parser<'a> {
         self.parse_element(&Tag::Item, |p| p.parse_until(Event::End(Tag::Item)))
     }
 
+    fn parse_general_list_opt<F, T>(
+        &mut self,
+        ordered: Option<u64>,
+        item_parser: F,
+    ) -> Result<Vec<T>, ParseError<'a>>
+    where
+        F: Fn(&mut Self) -> Result<T, ParseError<'a>>,
+    {
+        if self.parse_start(&Tag::List(ordered)).is_err() {
+            return Ok(Vec::new());
+        }
+        let mut items = Vec::new();
+        while self.parse_end(&Tag::List(ordered)).is_err() {
+            items.push(item_parser(self)?);
+        }
+        Ok(items)
+    }
+
+    /// Parses an unordered list that may be empty (nonexistent.)
+    pub fn parse_list_opt(&mut self) -> Result<Vec<Fragment>, ParseError<'a>> {
+        //self.parse_general_list(None, |p| p.parse_item())
+        self.parse_general_list_opt(None, Self::parse_item)
+    }
+
     /// Parses a list of hashtags.
     pub fn parse_tags(&mut self) -> Result<Vec<String>, ParseError<'a>> {
         self.parse_element_res(&Tag::Paragraph, |p| {

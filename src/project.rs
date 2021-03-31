@@ -148,7 +148,7 @@ impl Actions {
             };
 
             let actions = parser
-                .parse_list()
+                .parse_list_opt()
                 .map_err(ParseError::ParseError)?
                 .into_iter()
                 .map(Action::from_fragment)
@@ -592,6 +592,38 @@ mod tests {
                         id: Some(String::from("fedcba"))
                     }
                 ],
+                complete: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn empty_action_section_is_allowed() {
+        let project_str = "# Project title\n#in-progress\n## Actions\n\n";
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
+        assert_eq!(project.actions, Actions::default());
+    }
+
+    #[test]
+    fn empty_action_subsection_is_allowed() {
+        let project_str = "# Project title\n#in-progress\n## Actions\n\n### Active\n\n";
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
+        assert_eq!(project.actions, Actions::default());
+    }
+
+    #[test]
+    fn empty_action_subsection_is_allowed_followed_by_nonempty_section() {
+        let project_str =
+            "# Project title\n#in-progress\n## Actions\n\n### Active\n\n### Upcoming\n\n- foo\n\n";
+        let project = Project::parse("197001010000 Project title", project_str).unwrap();
+        assert_eq!(
+            project.actions,
+            Actions {
+                active: vec![],
+                upcoming: vec![Action {
+                    text: Fragment::from_events(vec![Event::Text("foo".into())]),
+                    id: None,
+                }],
                 complete: vec![],
             }
         );
