@@ -253,6 +253,47 @@ pub fn as_obsidian_link<'a>(v: &[Event<'a>]) -> Option<CowStr<'a>> {
     Some(text)
 }
 
+// TODO: Make these CowStrs?
+pub struct BlockRef {
+    pub link: String,
+    pub id: String,
+}
+
+pub fn as_embedded_block_ref<'a>(v: &[Event<'a>]) -> Option<BlockRef> {
+    if v.len() != 5 {
+        return None;
+    }
+
+    match &v[0] {
+        Event::Text(s) if &**s == "![" => {}
+        _ => return None,
+    }
+
+    match &v[1] {
+        Event::Text(s) if &**s == "[" => {}
+        _ => return None,
+    }
+
+    let text = match &v[2] {
+        Event::Text(s) => s.clone(),
+        _ => return None,
+    };
+
+    for i in [3, 4].iter() {
+        match &v[*i] {
+            Event::Text(s) if &**s == "]" => {}
+            _ => return None,
+        }
+    }
+
+    let text = text.to_string();
+    let idx = text.find("#^")?;
+    let link = text[..idx].to_string();
+    let id = text[idx + 2..].to_string();
+
+    Some(BlockRef { link, id })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -274,6 +315,36 @@ mod tests {
                 let title = heading.try_as_title_string();
                 assert_eq!(title, Some(String::from("Foo bar baz")));
             }
+        }
+    }
+
+    mod as_embedded_block_ref {
+        use super::*;
+
+        #[test]
+        fn parses_project_ref() {
+            let evs = [
+                Event::Text("![".into()),
+                Event::Text("[".into()),
+                Event::Text("197001010000 Project title#^abcdef".into()),
+                Event::Text("]".into()),
+                Event::Text("]".into()),
+            ];
+            let block_ref = as_embedded_block_ref(&evs).unwrap();
+            assert_eq!(block_ref.link, String::from("197001010000 Project title"));
+        }
+
+        #[test]
+        fn parses_action_id() {
+            let evs = [
+                Event::Text("![".into()),
+                Event::Text("[".into()),
+                Event::Text("197001010000 Project title#^abcdef".into()),
+                Event::Text("]".into()),
+                Event::Text("]".into()),
+            ];
+            let block_ref = as_embedded_block_ref(&evs).unwrap();
+            assert_eq!(block_ref.id, String::from("abcdef"));
         }
     }
 }
