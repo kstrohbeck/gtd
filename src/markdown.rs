@@ -42,7 +42,7 @@ fn tag_static<'a>(tag: Tag<'a>) -> Tag<'static> {
     }
 }
 
-fn event_static<'a>(event: Event<'a>) -> Event<'static> {
+pub fn event_static<'a>(event: Event<'a>) -> Event<'static> {
     match event {
         Event::Start(t) => Event::Start(tag_static(t)),
         Event::End(t) => Event::End(tag_static(t)),
