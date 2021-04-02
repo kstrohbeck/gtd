@@ -1,6 +1,6 @@
 //! Markdown parser and helpers.
 
-use crate::markdown::{Fragment, Heading};
+use crate::markdown::{event_static, Fragment, Heading};
 use pulldown_cmark::{CowStr, Event, Options, Parser as MarkdownParser, Tag};
 use std::{
     convert::{TryFrom, TryInto},
@@ -228,6 +228,18 @@ pub enum ParseError<'a> {
     CouldntParseHeading(<Heading as TryFrom<Fragment>>::Error),
 }
 
+impl<'a> ParseError<'a> {
+    pub fn to_static(self) -> ParseError<'static> {
+        match self {
+            Self::Unexpected { expected, actual } => ParseError::Unexpected {
+                expected: event_static(expected),
+                actual: actual.to_static(),
+            },
+            Self::CouldntParseHeading(h) => ParseError::CouldntParseHeading(h),
+        }
+    }
+}
+
 impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -251,6 +263,15 @@ pub enum Actual<'a> {
 
     /// A standard `pulldown_cmark` event.
     Event(Event<'a>),
+}
+
+impl<'a> Actual<'a> {
+    pub fn to_static(self) -> Actual<'static> {
+        match self {
+            Self::Eof => Actual::Eof,
+            Self::Event(e) => Actual::Event(event_static(e)),
+        }
+    }
 }
 
 impl<'a> fmt::Display for Actual<'a> {
