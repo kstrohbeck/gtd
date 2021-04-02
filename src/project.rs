@@ -270,6 +270,17 @@ pub enum ParseError<'a> {
     ParseError(parser::ParseError<'a>),
 }
 
+impl<'a> ParseError<'a> {
+    pub fn into_static(self) -> ParseError<'static> {
+        match self {
+            Self::MissingStatus => ParseError::MissingStatus,
+            Self::HasSectionWithNonStringTitle(h) => ParseError::HasSectionWithNonStringTitle(h),
+            Self::HasUnexpectedSection(h) => ParseError::HasUnexpectedSection(h),
+            Self::ParseError(p) => ParseError::ParseError(p.into_static()),
+        }
+    }
+}
+
 impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
