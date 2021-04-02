@@ -135,7 +135,7 @@ impl Actions {
         let mut complete = Vec::new();
 
         while let Some(Event::Start(Tag::Heading(3))) = parser.peek() {
-            let section_heading = parser.parse_heading(3).map_err(ParseError::ParseError)?;
+            let section_heading = parser.parse_heading(3)?;
             let section_title = section_heading
                 .try_as_str()
                 .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
@@ -150,8 +150,7 @@ impl Actions {
             };
 
             let actions = parser
-                .parse_list_opt()
-                .map_err(ParseError::ParseError)?
+                .parse_list_opt()?
                 .into_iter()
                 .map(Action::from_fragment)
                 .collect();
@@ -297,6 +296,12 @@ impl<'a> fmt::Display for ParseError<'a> {
 }
 
 impl<'a> Error for ParseError<'a> {}
+
+impl<'a> From<parser::ParseError<'a>> for ParseError<'a> {
+    fn from(error: parser::ParseError<'a>) -> Self {
+        Self::ParseError(error)
+    }
+}
 
 #[cfg(test)]
 mod tests {

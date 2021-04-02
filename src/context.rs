@@ -19,7 +19,7 @@ impl Context {
             title,
             tags: _tags,
             mut parser,
-        } = Doc::parse(text).map_err(ParseError::ParseError)?;
+        } = Doc::parse(text)?;
 
         let actions = parser
             .parse_list()
@@ -74,6 +74,12 @@ impl<'a> fmt::Display for ParseError<'a> {
 }
 
 impl<'a> Error for ParseError<'a> {}
+
+impl<'a> From<parser::ParseError<'a>> for ParseError<'a> {
+    fn from(error: parser::ParseError<'a>) -> Self {
+        Self::ParseError(error)
+    }
+}
 
 #[cfg(test)]
 mod tests {
