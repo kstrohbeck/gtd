@@ -1,5 +1,6 @@
 use crate::markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading};
-use crate::parser::ParseError;
+use crate::parser;
+use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Context {
@@ -16,7 +17,7 @@ impl Context {
             title,
             tags: _tags,
             mut parser,
-        } = Doc::parse(text)?;
+        } = Doc::parse(text).map_err(ParseError::ParseError)?;
 
         let actions = parser
             .parse_list()
@@ -48,6 +49,29 @@ impl Action {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParseError<'a> {
+    ParseError(parser::ParseError<'a>),
+}
+
+impl<'a> ParseError<'a> {
+    pub fn into_static(self) -> ParseError<'static> {
+        match self {
+            Self::ParseError(e) => ParseError::ParseError(e.into_static()),
+        }
+    }
+}
+
+impl<'a> fmt::Display for ParseError<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ParseError(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl<'a> Error for ParseError<'a> {}
 
 #[cfg(test)]
 mod tests {
