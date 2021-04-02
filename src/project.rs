@@ -1,5 +1,7 @@
-use crate::markdown::{Doc, Fragment, Heading};
-use crate::parser::{self, Parser};
+use crate::{
+    markdown::{Doc, Fragment, Heading},
+    parser::{self, Parser},
+};
 use pulldown_cmark::{CowStr, Event, Tag};
 use std::{convert::TryFrom, error::Error, fmt};
 

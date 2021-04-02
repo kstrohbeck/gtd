@@ -1,5 +1,7 @@
-use crate::markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading};
-use crate::parser;
+use crate::{
+    markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading},
+    parser,
+};
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq)]
