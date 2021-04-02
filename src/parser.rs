@@ -229,11 +229,11 @@ pub enum ParseError<'a> {
 }
 
 impl<'a> ParseError<'a> {
-    pub fn to_static(self) -> ParseError<'static> {
+    pub fn into_static(self) -> ParseError<'static> {
         match self {
             Self::Unexpected { expected, actual } => ParseError::Unexpected {
                 expected: event_static(expected),
-                actual: actual.to_static(),
+                actual: actual.into_static(),
             },
             Self::CouldntParseHeading(h) => ParseError::CouldntParseHeading(h),
         }
@@ -266,7 +266,7 @@ pub enum Actual<'a> {
 }
 
 impl<'a> Actual<'a> {
-    pub fn to_static(self) -> Actual<'static> {
+    pub fn into_static(self) -> Actual<'static> {
         match self {
             Self::Eof => Actual::Eof,
             Self::Event(e) => Actual::Event(event_static(e)),
