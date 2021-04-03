@@ -1,5 +1,5 @@
 use crate::{
-    markdown::{Doc, Fragment, Heading},
+    markdown::{BlockRef, Doc, Fragment, Heading},
     parser::{self, Parser},
 };
 use pulldown_cmark::{CowStr, Event, Tag};
@@ -11,8 +11,8 @@ const COMPLETE_TAG: &str = "complete";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
-    pub filename: String,
-    filename_split_idx: Option<usize>,
+    pub name: Name,
+    // TODO: Rename title.
     pub title: Heading,
     pub tags: Vec<String>,
     pub status: Status,
@@ -23,12 +23,7 @@ pub struct Project {
 
 impl Project {
     pub fn parse<S: Into<String>>(filename: S, text: &str) -> Result<Self, ParseError> {
-        let filename = filename.into();
-
-        let filename_split_idx =
-            filename
-                .char_indices()
-                .find_map(|(i, c)| if c == ' ' { Some(i) } else { None });
+        let name = Name::new(filename.into()).ok_or(ParseError::InvalidProjectName)?;
 
         let Doc {
             title,
@@ -70,8 +65,7 @@ impl Project {
         }
 
         Ok(Self {
-            filename,
-            filename_split_idx,
+            name,
             title,
             tags,
             status,
@@ -81,23 +75,54 @@ impl Project {
         })
     }
 
-    pub fn id(&self) -> Option<&str> {
-        let idx = self.filename_split_idx?;
-        let id = self.filename.get(..idx)?;
-        if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
-            return None;
-        }
-        Some(id)
+    pub fn id(&self) -> &str {
+        self.name.id()
     }
 
-    pub fn name(&self) -> Option<&str> {
-        self.filename.get(self.filename_split_idx? + 1..)
+    pub fn title(&self) -> &str {
+        self.name.title()
     }
 }
 
 impl fmt::Display for Project {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.filename)
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Name {
+    name: String,
+    split_idx: usize,
+}
+
+impl Name {
+    fn new(name: String) -> Option<Self> {
+        let split_idx = name
+            .char_indices()
+            .find_map(|(i, c)| if c == ' ' { Some(i) } else { None })?;
+
+        // Validate the ID.
+        let id = &name[..split_idx];
+        if id.len() != 12 || id.chars().any(|c| !c.is_digit(10)) {
+            return None;
+        }
+
+        Some(Self { name, split_idx })
+    }
+
+    pub fn id(&self) -> &str {
+        &self.name[..self.split_idx]
+    }
+
+    pub fn title(&self) -> &str {
+        &self.name[self.split_idx + 1..]
+    }
+}
+
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 
@@ -176,7 +201,7 @@ impl Actions {
         active.chain(upcoming).chain(complete)
     }
 
-    pub fn get_action(&self, id: &str) -> Option<(&Action, ActionStatus)> {
+    pub fn get_action(&self, id: &ActionId) -> Option<(&Action, ActionStatus)> {
         self.actions()
             .find(|(a, _)| matches!(&a.id, Some(x) if x == id))
     }
@@ -201,7 +226,7 @@ pub enum ActionStatus {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Action {
     text: Fragment,
-    id: Option<String>,
+    id: Option<ActionId>,
 }
 
 impl Action {
@@ -248,7 +273,7 @@ impl Action {
                 if let Some(ev) = ev {
                     evs.push(ev);
                 }
-                Some(id)
+                Some(ActionId(id))
             }
             None => {
                 evs.push(last_ev);
@@ -263,8 +288,29 @@ impl Action {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionId(String);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActionRef {
+    pub project_name: Name,
+    pub action_id: ActionId,
+}
+
+impl ActionRef {
+    pub fn from_block_ref(block_ref: BlockRef) -> Option<Self> {
+        let project_name = Name::new(block_ref.link)?;
+        let action_id = ActionId(block_ref.id);
+        Some(Self {
+            project_name,
+            action_id,
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParseError<'a> {
+    InvalidProjectName,
     MissingStatus,
     HasSectionWithNonStringTitle(Heading),
     HasUnexpectedSection(Heading),
@@ -274,6 +320,7 @@ pub enum ParseError<'a> {
 impl<'a> ParseError<'a> {
     pub fn into_static(self) -> ParseError<'static> {
         match self {
+            Self::InvalidProjectName => ParseError::InvalidProjectName,
             Self::MissingStatus => ParseError::MissingStatus,
             Self::HasSectionWithNonStringTitle(h) => ParseError::HasSectionWithNonStringTitle(h),
             Self::HasUnexpectedSection(h) => ParseError::HasUnexpectedSection(h),
@@ -285,6 +332,7 @@ impl<'a> ParseError<'a> {
 impl<'a> fmt::Display for ParseError<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::InvalidProjectName => write!(f, "Project has invalid name"),
             Self::MissingStatus => write!(f, "Project is missing status"),
             Self::HasSectionWithNonStringTitle(_) => {
                 write!(f, "Project has section with non-string title")
@@ -315,7 +363,7 @@ mod tests {
         fn text_action_with_id_has_correct_id() {
             let frag = Fragment::from_events(vec![Event::Text("action text ^abcdef".into())]);
             let action = Action::from_fragment(frag);
-            assert_eq!(action.id, Some(String::from("abcdef")));
+            assert_eq!(action.id, Some(ActionId(String::from("abcdef"))));
         }
 
         #[test]
@@ -355,7 +403,7 @@ mod tests {
                 Event::Text(" ^abcdef".into()),
             ]);
             let action = Action::from_fragment(frag);
-            assert_eq!(action.id, Some(String::from("abcdef")));
+            assert_eq!(action.id, Some(ActionId(String::from("abcdef"))));
         }
 
         #[test]
@@ -551,14 +599,14 @@ mod tests {
                 upcoming: vec![
                     Action {
                         text: Fragment::from_events(vec![Event::Text("Second action".into())]),
-                        id: Some(String::from("abcdef"))
+                        id: Some(ActionId(String::from("abcdef"))),
                     },
                     Action {
                         text: Fragment::from_events(vec![
                             Event::Text("Third action ".into()),
                             Event::Code("with code".into())
                         ]),
-                        id: Some(String::from("fedcba"))
+                        id: Some(ActionId(String::from("fedcba"))),
                     }
                 ],
                 complete: vec![],
@@ -600,14 +648,14 @@ mod tests {
                 upcoming: vec![
                     Action {
                         text: Fragment::from_events(vec![Event::Text("Second action".into())]),
-                        id: Some(String::from("abcdef"))
+                        id: Some(ActionId(String::from("abcdef"))),
                     },
                     Action {
                         text: Fragment::from_events(vec![
                             Event::Text("Third action ".into()),
                             Event::Code("with code".into())
                         ]),
-                        id: Some(String::from("fedcba"))
+                        id: Some(ActionId(String::from("fedcba"))),
                     }
                 ],
                 complete: vec![],
@@ -651,27 +699,11 @@ mod tests {
         use super::*;
 
         #[test]
-        fn id_is_returned_if_it_exists() {
+        fn id_is_parsed() {
             let project_str = "# Project title\n#in-progress\n";
             let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
-            assert_eq!(project.id(), Some("197001010000"));
-        }
-
-        #[test]
-        fn id_is_not_returned_if_in_wrong_format() {
-            let project_str = "# Project title\n#in-progress\n";
-            let project = Project::parse("19700101 Project title", project_str).unwrap();
-
-            assert!(project.id().is_none());
-        }
-
-        #[test]
-        fn id_is_not_returned_if_it_doesnt_exist() {
-            let project_str = "# Project title\n#in-progress\n";
-            let project = Project::parse("Project title", project_str).unwrap();
-
-            assert!(project.id().is_none());
+            assert_eq!(project.id(), "197001010000");
         }
     }
 
@@ -683,15 +715,7 @@ mod tests {
             let project_str = "# Project title\n#in-progress\n";
             let project = Project::parse("197001010000 Project title", project_str).unwrap();
 
-            assert_eq!(project.name(), Some("Project title"));
-        }
-
-        #[test]
-        fn name_is_not_returned_if_it_doesnt_exist() {
-            let project_str = "# Project title\n#in-progress\n";
-            let project = Project::parse("197001010000", project_str).unwrap();
-
-            assert!(project.name().is_none());
+            assert_eq!(project.title(), "Project title");
         }
     }
 }

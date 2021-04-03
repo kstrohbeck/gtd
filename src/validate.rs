@@ -8,9 +8,7 @@ use std::collections::HashSet;
 pub fn validate(docs: Documents) {
     fn validate_project<'a>(project: &'a Project, ids: &mut HashSet<&'a str>) {
         fn validate_id<'a>(project: &'a Project, ids: &mut HashSet<&'a str>) -> Result<(), String> {
-            let id = project
-                .id()
-                .ok_or_else(|| format!("{} has an invalid ID", project))?;
+            let id = project.id();
 
             if !ids.insert(id) {
                 return Err(format!("{} has a duplicate ID", project));
@@ -20,9 +18,7 @@ pub fn validate(docs: Documents) {
         }
 
         fn validate_title(project: &Project) -> Result<(), String> {
-            let name_title = project
-                .name()
-                .ok_or_else(|| format!("{} has an invalid title in its name", project))?;
+            let name_title = project.title();
 
             let body_title = project
                 .title
@@ -95,31 +91,31 @@ pub fn validate(docs: Documents) {
             ContextAction::Literal(_) => None,
         });
         for action in linked_actions {
-            if let Some(project) = docs.projects.iter().find(|p| p.filename == action.link) {
+            if let Some(project) = docs.projects.iter().find(|p| p.name == action.project_name) {
                 if project.status != ProjectStatus::InProgress {
                     println!(
                         "{} has a next action in {} but is not in progress",
-                        action.link, ctx_title
+                        action.project_name, ctx_title
                     );
                 }
 
-                if let Some((_act, act_status)) = project.actions.get_action(&action.id) {
+                if let Some((_act, act_status)) = project.actions.get_action(&action.action_id) {
                     if act_status != ActionStatus::Active {
                         println!(
                             "{} has a next action in {} that isn't in Active",
-                            action.link, ctx_title
+                            action.project_name, ctx_title
                         );
                     }
                 } else {
                     println!(
                         "{} is referenced in {} but does not have the referencing action",
-                        action.link, ctx_title
+                        action.project_name, ctx_title
                     );
                 }
             } else {
                 println!(
                     "{} is not a valid link to project in {}",
-                    action.link, ctx_title
+                    action.project_name, ctx_title
                 );
             }
         }

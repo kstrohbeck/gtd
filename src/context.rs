@@ -1,19 +1,20 @@
 use crate::{
-    markdown::{as_embedded_block_ref, BlockRef, Doc, Fragment, Heading},
+    markdown::{BlockRef, Doc, Fragment, Heading},
     parser,
+    project::ActionRef,
 };
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Context {
-    pub filename: String,
+    pub name: Name,
     pub title: Heading,
     pub actions: Vec<Action>,
 }
 
 impl Context {
     pub fn parse<S: Into<String>>(filename: S, text: &str) -> Result<Self, ParseError> {
-        let filename = filename.into();
+        let name = Name(filename.into());
 
         let Doc {
             title,
@@ -30,23 +31,26 @@ impl Context {
             .collect();
 
         Ok(Self {
-            filename,
+            name,
             title,
             actions,
         })
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Name(String);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     Literal(Fragment),
-    Reference(BlockRef),
+    Reference(ActionRef),
 }
 
 impl Action {
     pub fn from_fragment(fragment: Fragment) -> Self {
-        match as_embedded_block_ref(fragment.as_events()) {
-            Some(block_ref) => Self::Reference(block_ref),
+        match BlockRef::from_fragment(&fragment) {
+            Some(block_ref) => Self::Reference(ActionRef::from_block_ref(block_ref).unwrap()),
             None => Self::Literal(fragment),
         }
     }
@@ -84,6 +88,7 @@ impl<'a> From<parser::ParseError<'a>> for ParseError<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::markdown::BlockRef;
     use pulldown_cmark::Event;
     use std::convert::TryInto;
 
@@ -107,10 +112,14 @@ mod tests {
             context.actions,
             vec![
                 Action::Literal(Fragment::from_events(vec![Event::Text("foo".into())])),
-                Action::Reference(BlockRef {
-                    link: String::from("bar"),
-                    id: String::from("baz")
-                }),
+                Action::Reference(
+                    ActionRef::from_block_ref(BlockRef {
+                        link: String::from("bar"),
+                        id: String::from("baz"),
+                        is_embedded: true,
+                    })
+                    .unwrap()
+                ),
             ]
         );
     }

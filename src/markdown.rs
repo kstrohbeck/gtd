@@ -124,6 +124,65 @@ impl Heading {
     }
 }
 
+impl fmt::Display for Heading {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        struct LinkParts<'a> {
+            url: &'a CowStr<'a>,
+            title: &'a CowStr<'a>,
+        }
+
+        impl<'a> fmt::Display for LinkParts<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}", self.url)?;
+                if self.title.is_empty() {
+                    write!(f, " {}", self.title)?;
+                }
+                Ok(())
+            }
+        }
+
+        for ev in &self.0 {
+            match ev {
+                HeadingEvent::Start(tag) => match tag {
+                    HeadingTag::Emphasis => write!(f, "_")?,
+                    HeadingTag::Strong => write!(f, "**")?,
+                    HeadingTag::Strikethrough => write!(f, "~~")?,
+                    HeadingTag::Link(ty, _, _) => match ty {
+                        LinkType::Autolink | LinkType::Email => write!(f, "<")?,
+                        _ => write!(f, "[")?,
+                    },
+                    HeadingTag::Image(ty, _, _) => match ty {
+                        LinkType::Autolink | LinkType::Email => write!(f, "!<")?,
+                        _ => write!(f, "![")?,
+                    },
+                },
+                HeadingEvent::End(tag) => match tag {
+                    HeadingTag::Emphasis => write!(f, "_")?,
+                    HeadingTag::Strong => write!(f, "**")?,
+                    HeadingTag::Strikethrough => write!(f, "~~")?,
+                    HeadingTag::Link(ty, url, title) | HeadingTag::Image(ty, url, title) => {
+                        let parts = LinkParts { url, title };
+                        match ty {
+                            LinkType::Inline => write!(f, "]({})", parts)?,
+                            LinkType::Reference | LinkType::ReferenceUnknown => {
+                                write!(f, "][{}]", parts)?
+                            }
+                            LinkType::Collapsed | LinkType::CollapsedUnknown => write!(f, "][]")?,
+                            LinkType::Shortcut | LinkType::ShortcutUnknown => write!(f, "]")?,
+                            LinkType::Autolink | LinkType::Email => write!(f, ">")?,
+                        }
+                    }
+                },
+                HeadingEvent::Text(t) => write!(f, "{}", t)?,
+                HeadingEvent::Code(c) => write!(f, "`{}`", c)?,
+                HeadingEvent::Html(h) => write!(f, "<{}>", h)?,
+                HeadingEvent::FootnoteReference(s) => write!(f, "^{}", s)?,
+            }
+        }
+        Ok(())
+    }
+}
+
 impl TryFrom<Fragment> for Heading {
     type Error = HeadingEventError<'static>;
 
@@ -232,41 +291,49 @@ impl<'a> Error for HeadingTagError<'a> {}
 pub struct BlockRef {
     pub link: String,
     pub id: String,
+    pub is_embedded: bool,
 }
 
-pub fn as_embedded_block_ref(v: &[Event]) -> Option<BlockRef> {
-    if v.len() != 5 {
-        return None;
-    }
+impl BlockRef {
+    pub fn from_fragment(frag: &Fragment) -> Option<Self> {
+        let evs = frag.as_events();
 
-    match &v[0] {
-        Event::Text(s) if &**s == "![" => {}
-        _ => return None,
-    }
-
-    match &v[1] {
-        Event::Text(s) if &**s == "[" => {}
-        _ => return None,
-    }
-
-    let text = match &v[2] {
-        Event::Text(s) => s.clone(),
-        _ => return None,
-    };
-
-    for i in [3, 4].iter() {
-        match &v[*i] {
-            Event::Text(s) if &**s == "]" => {}
-            _ => return None,
+        if evs.len() != 5 {
+            return None;
         }
+
+        let is_embedded = match &evs[0] {
+            Event::Text(s) if &**s == "![" => true,
+            Event::Text(s) if &**s == "[" => false,
+            _ => return None,
+        };
+
+        if !matches!(&evs[1], Event::Text(s) if &**s == "]") {
+            return None;
+        }
+
+        let text = match &evs[2] {
+            Event::Text(s) => s.clone(),
+            _ => return None,
+        };
+
+        for i in [3, 4].iter() {
+            if !matches!(&evs[*i], Event::Text(s) if &**s == "]") {
+                return None;
+            }
+        }
+
+        let text = text.to_string();
+        let idx = text.find("#^")?;
+        let link = text[..idx].to_string();
+        let id = text[idx + 2..].to_string();
+
+        Some(Self {
+            link,
+            id,
+            is_embedded,
+        })
     }
-
-    let text = text.to_string();
-    let idx = text.find("#^")?;
-    let link = text[..idx].to_string();
-    let id = text[idx + 2..].to_string();
-
-    Some(BlockRef { link, id })
 }
 
 #[cfg(test)]
@@ -293,33 +360,37 @@ mod tests {
         }
     }
 
-    mod as_embedded_block_ref {
+    mod block_ref {
         use super::*;
 
-        #[test]
-        fn parses_project_ref() {
-            let evs = [
-                Event::Text("![".into()),
-                Event::Text("[".into()),
-                Event::Text("197001010000 Project title#^abcdef".into()),
-                Event::Text("]".into()),
-                Event::Text("]".into()),
-            ];
-            let block_ref = as_embedded_block_ref(&evs).unwrap();
-            assert_eq!(block_ref.link, String::from("197001010000 Project title"));
-        }
+        mod from_fragment {
+            use super::*;
 
-        #[test]
-        fn parses_action_id() {
-            let evs = [
-                Event::Text("![".into()),
-                Event::Text("[".into()),
-                Event::Text("197001010000 Project title#^abcdef".into()),
-                Event::Text("]".into()),
-                Event::Text("]".into()),
-            ];
-            let block_ref = as_embedded_block_ref(&evs).unwrap();
-            assert_eq!(block_ref.id, String::from("abcdef"));
+            #[test]
+            fn parses_project_ref() {
+                let frag = Fragment::from_events(vec![
+                    Event::Text("![".into()),
+                    Event::Text("[".into()),
+                    Event::Text("197001010000 Project title#^abcdef".into()),
+                    Event::Text("]".into()),
+                    Event::Text("]".into()),
+                ]);
+                let block_ref = BlockRef::from_fragment(&frag).unwrap();
+                assert_eq!(block_ref.link, String::from("197001010000 Project title"));
+            }
+
+            #[test]
+            fn parses_action_id() {
+                let frag = Fragment::from_events(vec![
+                    Event::Text("![".into()),
+                    Event::Text("[".into()),
+                    Event::Text("197001010000 Project title#^abcdef".into()),
+                    Event::Text("]".into()),
+                    Event::Text("]".into()),
+                ]);
+                let block_ref = BlockRef::from_fragment(&frag).unwrap();
+                assert_eq!(block_ref.id, String::from("abcdef"));
+            }
         }
     }
 }
