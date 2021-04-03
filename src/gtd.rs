@@ -54,12 +54,12 @@ impl Loader {
         }
     }
 
-    pub fn all_project_names(&self) -> Result<impl Iterator<Item = String>, IoError> {
-        Self::read_dir(&self.project_dir)
+    pub fn all_project_names(&self) -> Result<impl Iterator<Item = ProjectName>, IoError> {
+        Self::read_dir(&self.project_dir).map(|i| i.map(ProjectName))
     }
 
-    pub fn all_context_names(&self) -> Result<impl Iterator<Item = String>, IoError> {
-        Self::read_dir(&self.context_dir)
+    pub fn all_context_names(&self) -> Result<impl Iterator<Item = ContextName>, IoError> {
+        Self::read_dir(&self.context_dir).map(|i| i.map(ContextName))
     }
 
     fn read_dir(dir: &Path) -> Result<impl Iterator<Item = String>, IoError> {
@@ -75,14 +75,16 @@ impl Loader {
         Ok(iter)
     }
 
-    pub fn load_project(&self, name: &str) -> Result<Project, LoadProjectError> {
-        let text = Self::load_markdown_file(&self.project_dir, name)?;
+    pub fn load_project(&self, name: &ProjectName) -> Result<Project, LoadProjectError> {
+        let name = name.to_inner();
+        let text = Self::load_markdown_file(&self.project_dir, &name)?;
         let project = Project::parse(name, &text)?;
         Ok(project)
     }
 
-    pub fn load_context(&self, name: &str) -> Result<Context, LoadContextError> {
-        let text = Self::load_markdown_file(&self.context_dir, name)?;
+    pub fn load_context(&self, name: &ContextName) -> Result<Context, LoadContextError> {
+        let name = name.to_inner();
+        let text = Self::load_markdown_file(&self.context_dir, &name)?;
         let context = Context::parse(name, &text)?;
         Ok(context)
     }
@@ -94,8 +96,26 @@ impl Loader {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ProjectName(String);
+
+impl ProjectName {
+    fn to_inner(&self) -> String {
+        self.0.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContextName(String);
+
+impl ContextName {
+    fn to_inner(&self) -> String {
+        self.0.clone()
+    }
+}
+
 #[derive(Debug)]
-enum LoadProjectError {
+pub enum LoadProjectError {
     IoError(IoError),
     ProjectParseError(ProjectParseError<'static>),
 }
@@ -124,7 +144,7 @@ impl<'a> From<ProjectParseError<'a>> for LoadProjectError {
 }
 
 #[derive(Debug)]
-enum LoadContextError {
+pub enum LoadContextError {
     IoError(IoError),
     ContextParseError(ContextParseError<'static>),
 }
