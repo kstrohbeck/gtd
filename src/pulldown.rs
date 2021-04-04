@@ -12,11 +12,19 @@ pub fn cow_str_static<'a>(cow: CowStr<'a>) -> CowStr<'static> {
     }
 }
 
-/// Extends the lifetime of a `pulldown_cmark::CodeBlockKind` to `'static`.
-fn code_block_kind_static<'a>(kind: CodeBlockKind<'a>) -> CodeBlockKind<'static> {
-    match kind {
-        CodeBlockKind::Fenced(f) => CodeBlockKind::Fenced(cow_str_static(f)),
-        CodeBlockKind::Indented => CodeBlockKind::Indented,
+/// Extends the lifetime of a `pulldown_cmark::Event` to `'static`.
+pub fn event_static<'a>(event: Event<'a>) -> Event<'static> {
+    match event {
+        Event::Start(t) => Event::Start(tag_static(t)),
+        Event::End(t) => Event::End(tag_static(t)),
+        Event::Text(s) => Event::Text(cow_str_static(s)),
+        Event::Code(s) => Event::Code(cow_str_static(s)),
+        Event::Html(s) => Event::Html(cow_str_static(s)),
+        Event::FootnoteReference(s) => Event::FootnoteReference(cow_str_static(s)),
+        Event::SoftBreak => Event::SoftBreak,
+        Event::HardBreak => Event::HardBreak,
+        Event::Rule => Event::Rule,
+        Event::TaskListMarker(b) => Event::TaskListMarker(b),
     }
 }
 
@@ -42,19 +50,11 @@ fn tag_static<'a>(tag: Tag<'a>) -> Tag<'static> {
     }
 }
 
-/// Extends the lifetime of a `pulldown_cmark::Event` to `'static`.
-pub fn event_static<'a>(event: Event<'a>) -> Event<'static> {
-    match event {
-        Event::Start(t) => Event::Start(tag_static(t)),
-        Event::End(t) => Event::End(tag_static(t)),
-        Event::Text(s) => Event::Text(cow_str_static(s)),
-        Event::Code(s) => Event::Code(cow_str_static(s)),
-        Event::Html(s) => Event::Html(cow_str_static(s)),
-        Event::FootnoteReference(s) => Event::FootnoteReference(cow_str_static(s)),
-        Event::SoftBreak => Event::SoftBreak,
-        Event::HardBreak => Event::HardBreak,
-        Event::Rule => Event::Rule,
-        Event::TaskListMarker(b) => Event::TaskListMarker(b),
+/// Extends the lifetime of a `pulldown_cmark::CodeBlockKind` to `'static`.
+fn code_block_kind_static<'a>(kind: CodeBlockKind<'a>) -> CodeBlockKind<'static> {
+    match kind {
+        CodeBlockKind::Fenced(f) => CodeBlockKind::Fenced(cow_str_static(f)),
+        CodeBlockKind::Indented => CodeBlockKind::Indented,
     }
 }
 
