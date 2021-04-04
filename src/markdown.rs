@@ -54,60 +54,7 @@ impl Heading {
 
 impl fmt::Display for Heading {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        struct LinkParts<'a> {
-            url: &'a CowStr<'a>,
-            title: &'a CowStr<'a>,
-        }
-
-        impl<'a> fmt::Display for LinkParts<'a> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{}", self.url)?;
-                if self.title.is_empty() {
-                    write!(f, " {}", self.title)?;
-                }
-                Ok(())
-            }
-        }
-
-        for ev in &self.0 {
-            match ev {
-                HeadingEvent::Start(tag) => match tag {
-                    HeadingTag::Emphasis => write!(f, "_")?,
-                    HeadingTag::Strong => write!(f, "**")?,
-                    HeadingTag::Strikethrough => write!(f, "~~")?,
-                    HeadingTag::Link(ty, _, _) => match ty {
-                        LinkType::Autolink | LinkType::Email => write!(f, "<")?,
-                        _ => write!(f, "[")?,
-                    },
-                    HeadingTag::Image(ty, _, _) => match ty {
-                        LinkType::Autolink | LinkType::Email => write!(f, "!<")?,
-                        _ => write!(f, "![")?,
-                    },
-                },
-                HeadingEvent::End(tag) => match tag {
-                    HeadingTag::Emphasis => write!(f, "_")?,
-                    HeadingTag::Strong => write!(f, "**")?,
-                    HeadingTag::Strikethrough => write!(f, "~~")?,
-                    HeadingTag::Link(ty, url, title) | HeadingTag::Image(ty, url, title) => {
-                        let parts = LinkParts { url, title };
-                        match ty {
-                            LinkType::Inline => write!(f, "]({})", parts)?,
-                            LinkType::Reference | LinkType::ReferenceUnknown => {
-                                write!(f, "][{}]", parts)?
-                            }
-                            LinkType::Collapsed | LinkType::CollapsedUnknown => write!(f, "][]")?,
-                            LinkType::Shortcut | LinkType::ShortcutUnknown => write!(f, "]")?,
-                            LinkType::Autolink | LinkType::Email => write!(f, ">")?,
-                        }
-                    }
-                },
-                HeadingEvent::Text(t) => write!(f, "{}", t)?,
-                HeadingEvent::Code(c) => write!(f, "`{}`", c)?,
-                HeadingEvent::Html(h) => write!(f, "<{}>", h)?,
-                HeadingEvent::FootnoteReference(s) => write!(f, "^{}", s)?,
-            }
-        }
-        Ok(())
+        self.0.iter().try_for_each(|ev| write!(f, "{}", ev))
     }
 }
 
@@ -133,6 +80,63 @@ pub enum HeadingEvent<'a> {
     Code(CowStr<'a>),
     Html(CowStr<'a>),
     FootnoteReference(CowStr<'a>),
+}
+
+impl<'a> fmt::Display for HeadingEvent<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        struct LinkParts<'a> {
+            url: &'a CowStr<'a>,
+            title: &'a CowStr<'a>,
+        }
+
+        impl<'a> fmt::Display for LinkParts<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{}", self.url)?;
+                if self.title.is_empty() {
+                    write!(f, " {}", self.title)?;
+                }
+                Ok(())
+            }
+        }
+
+        match self {
+            HeadingEvent::Start(tag) => match tag {
+                HeadingTag::Emphasis => write!(f, "_")?,
+                HeadingTag::Strong => write!(f, "**")?,
+                HeadingTag::Strikethrough => write!(f, "~~")?,
+                HeadingTag::Link(ty, _, _) => match ty {
+                    LinkType::Autolink | LinkType::Email => write!(f, "<")?,
+                    _ => write!(f, "[")?,
+                },
+                HeadingTag::Image(ty, _, _) => match ty {
+                    LinkType::Autolink | LinkType::Email => write!(f, "!<")?,
+                    _ => write!(f, "![")?,
+                },
+            },
+            HeadingEvent::End(tag) => match tag {
+                HeadingTag::Emphasis => write!(f, "_")?,
+                HeadingTag::Strong => write!(f, "**")?,
+                HeadingTag::Strikethrough => write!(f, "~~")?,
+                HeadingTag::Link(ty, url, title) | HeadingTag::Image(ty, url, title) => {
+                    let parts = LinkParts { url, title };
+                    match ty {
+                        LinkType::Inline => write!(f, "]({})", parts)?,
+                        LinkType::Reference | LinkType::ReferenceUnknown => {
+                            write!(f, "][{}]", parts)?
+                        }
+                        LinkType::Collapsed | LinkType::CollapsedUnknown => write!(f, "][]")?,
+                        LinkType::Shortcut | LinkType::ShortcutUnknown => write!(f, "]")?,
+                        LinkType::Autolink | LinkType::Email => write!(f, ">")?,
+                    }
+                }
+            },
+            HeadingEvent::Text(t) => write!(f, "{}", t)?,
+            HeadingEvent::Code(c) => write!(f, "`{}`", c)?,
+            HeadingEvent::Html(h) => write!(f, "<{}>", h)?,
+            HeadingEvent::FootnoteReference(s) => write!(f, "^{}", s)?,
+        }
+        Ok(())
+    }
 }
 
 impl<'a> TryFrom<Event<'a>> for HeadingEvent<'a> {
