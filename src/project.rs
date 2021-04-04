@@ -46,7 +46,7 @@ impl Project {
         while parser.peek().is_some() {
             let section_heading = parser.parse_heading(2).map_err(ParseError::ParseError)?;
             let section_title = section_heading
-                .try_as_str()
+                .try_to_text()
                 .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
 
             match &*section_title {
@@ -54,7 +54,7 @@ impl Project {
                 "Info" => info = Some(parser.parse_until(Event::Start(Tag::Heading(2)))),
                 "Actions" => actions = Actions::parse(&mut parser).ok(),
                 "Action Items" => {
-                    let title_string = title.try_as_title_string().unwrap();
+                    let title_string = title.try_to_title_string().unwrap();
                     println!("Warning: Project \"{}\" uses deprecated \"Action Items\" section; rename to \"Actions\".", title_string);
                     actions = Actions::parse(&mut parser).ok();
                 }
@@ -162,7 +162,7 @@ impl Actions {
         while let Some(Event::Start(Tag::Heading(3))) = parser.peek() {
             let section_heading = parser.parse_heading(3)?;
             let section_title = section_heading
-                .try_as_str()
+                .try_to_text()
                 .ok_or_else(|| ParseError::HasSectionWithNonStringTitle(section_heading.clone()))?;
 
             let actions_type = match &*section_title {

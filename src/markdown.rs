@@ -6,49 +6,50 @@ use std::{
     fmt,
 };
 
+/// A fragment of arbitrary Markdown text.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fragment(Vec<Event<'static>>);
 
 impl Fragment {
+    /// Creates a `Fragment` from a list of `pulldown_cmark::Event`s.
     pub fn from_events(events: Vec<Event>) -> Self {
         Self(events.into_iter().map(event_static).collect())
     }
 
+    /// Extracts a list of `pulldown_cmark::Event`s.
     pub fn as_events(&self) -> &[Event<'static>] {
         &self.0[..]
     }
 
+    /// Converts a `Fragment` into a list of `pulldown_cmark::Event`s.
     pub fn into_events(self) -> Vec<Event<'static>> {
         self.0
     }
 }
 
+/// The text of a Markdown heading.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Heading(Vec<HeadingEvent<'static>>);
 
 impl Heading {
-    pub fn try_as_str(&self) -> Option<&str> {
-        if self.0.len() == 1 {
-            match &self.0[0] {
-                HeadingEvent::Text(t) => Some(&*t),
-                _ => None,
-            }
-        } else {
-            None
+    /// Tries to extract the value of the heading as simple text.
+    ///
+    /// Returns the text value of the heading if it was just text,
+    /// or `None` otherwise.
+    pub fn try_to_text(&self) -> Option<&str> {
+        if self.0.len() != 1 {
+            return None;
         }
+
+        self.0.get(0)?.try_to_text().map(|s| &**s)
     }
 
-    pub fn try_as_title_string(&self) -> Option<String> {
-        let mut s = String::new();
-
-        for ev in &self.0 {
-            match ev {
-                HeadingEvent::Text(t) | HeadingEvent::Code(t) => s.push_str(t),
-                _ => return None,
-            }
-        }
-
-        Some(s)
+    pub fn try_to_title_string(&self) -> Option<String> {
+        self.0.iter().try_fold(String::new(), |mut s, ev| {
+            let text = ev.try_to_text().or_else(|| ev.try_to_code())?;
+            s.push_str(text);
+            Some(s)
+        })
     }
 }
 
@@ -80,6 +81,22 @@ pub enum HeadingEvent<'a> {
     Code(CowStr<'a>),
     Html(CowStr<'a>),
     FootnoteReference(CowStr<'a>),
+}
+
+impl<'a> HeadingEvent<'a> {
+    pub fn try_to_text(&self) -> Option<&CowStr<'a>> {
+        match self {
+            Self::Text(t) => Some(t),
+            _ => None,
+        }
+    }
+
+    pub fn try_to_code(&self) -> Option<&CowStr<'a>> {
+        match self {
+            Self::Code(t) => Some(t),
+            _ => None,
+        }
+    }
 }
 
 impl<'a> fmt::Display for HeadingEvent<'a> {
@@ -275,7 +292,7 @@ mod tests {
     mod heading {
         use super::*;
 
-        mod try_as_title_string {
+        mod try_to_title_string {
             use super::*;
 
             #[test]
@@ -286,7 +303,7 @@ mod tests {
                     HeadingEvent::Text(" baz".into()),
                 ]);
 
-                let title = heading.try_as_title_string();
+                let title = heading.try_to_title_string();
                 assert_eq!(title, Some(String::from("Foo bar baz")));
             }
         }

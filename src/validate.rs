@@ -22,7 +22,7 @@ pub fn validate(docs: Documents) {
 
             let body_title = project
                 .title
-                .try_as_title_string()
+                .try_to_title_string()
                 .ok_or_else(|| format!("{} has an invalid title in its body", project))?;
 
             if name_title != body_title {
@@ -85,7 +85,7 @@ pub fn validate(docs: Documents) {
     }
 
     for context in &docs.contexts {
-        let ctx_title = context.title.try_as_title_string().unwrap();
+        let ctx_title = context.title.try_to_title_string().unwrap();
         let linked_actions = context.actions.iter().filter_map(|a| match a {
             ContextAction::Reference(block_ref) => Some(block_ref),
             ContextAction::Literal(_) => None,
