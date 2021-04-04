@@ -308,7 +308,7 @@ impl BlockRef {
             _ => return None,
         };
 
-        if !matches!(&evs[1], Event::Text(s) if &**s == "]") {
+        if !matches!(&evs[1], Event::Text(s) if &**s == "[") {
             return None;
         }
 
@@ -369,7 +369,7 @@ mod tests {
             #[test]
             fn parses_project_ref() {
                 let frag = Fragment::from_events(vec![
-                    Event::Text("![".into()),
+                    Event::Text("[".into()),
                     Event::Text("[".into()),
                     Event::Text("197001010000 Project title#^abcdef".into()),
                     Event::Text("]".into()),
@@ -382,7 +382,7 @@ mod tests {
             #[test]
             fn parses_action_id() {
                 let frag = Fragment::from_events(vec![
-                    Event::Text("![".into()),
+                    Event::Text("[".into()),
                     Event::Text("[".into()),
                     Event::Text("197001010000 Project title#^abcdef".into()),
                     Event::Text("]".into()),
@@ -390,6 +390,32 @@ mod tests {
                 ]);
                 let block_ref = BlockRef::from_fragment(&frag).unwrap();
                 assert_eq!(block_ref.id, String::from("abcdef"));
+            }
+
+            #[test]
+            fn parses_unembedded() {
+                let frag = Fragment::from_events(vec![
+                    Event::Text("[".into()),
+                    Event::Text("[".into()),
+                    Event::Text("197001010000 Project title#^abcdef".into()),
+                    Event::Text("]".into()),
+                    Event::Text("]".into()),
+                ]);
+                let block_ref = BlockRef::from_fragment(&frag).unwrap();
+                assert!(!block_ref.is_embedded);
+            }
+
+            #[test]
+            fn parses_embedded() {
+                let frag = Fragment::from_events(vec![
+                    Event::Text("![".into()),
+                    Event::Text("[".into()),
+                    Event::Text("197001010000 Project title#^abcdef".into()),
+                    Event::Text("]".into()),
+                    Event::Text("]".into()),
+                ]);
+                let block_ref = BlockRef::from_fragment(&frag).unwrap();
+                assert!(block_ref.is_embedded);
             }
         }
     }

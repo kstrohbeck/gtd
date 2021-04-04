@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn actions_parse() {
-        let text = "# @computer\n\n- foo\n- ![[bar#^baz]]\n";
+        let text = "# @computer\n\n- foo\n- ![[197001010000 bar#^abcdef]]\n";
         let context = Context::parse("@computer", text).unwrap();
         assert_eq!(
             context.actions,
@@ -114,8 +114,8 @@ mod tests {
                 Action::Literal(Fragment::from_events(vec![Event::Text("foo".into())])),
                 Action::Reference(
                     ActionRef::from_block_ref(BlockRef {
-                        link: String::from("bar"),
-                        id: String::from("baz"),
+                        link: String::from("197001010000 bar"),
+                        id: String::from("abcdef"),
                         is_embedded: true,
                     })
                     .unwrap()
