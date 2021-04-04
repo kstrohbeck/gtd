@@ -7,6 +7,7 @@ mod gtd;
 mod markdown;
 mod parser;
 mod project;
+mod pulldown;
 mod validate;
 
 /// Task management application.

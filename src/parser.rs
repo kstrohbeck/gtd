@@ -1,6 +1,9 @@
 //! Markdown parser and helpers.
 
-use crate::markdown::{event_static, Fragment, Heading};
+use crate::{
+    markdown::{Fragment, Heading},
+    pulldown::{event_static, DisplayableEvent},
+};
 use pulldown_cmark::{CowStr, Event, Options, Parser as MarkdownParser, Tag};
 use std::{
     convert::{TryFrom, TryInto},
@@ -8,6 +11,27 @@ use std::{
     fmt,
     iter::Peekable,
 };
+
+pub struct Doc<'a> {
+    pub title: Heading,
+    pub tags: Vec<String>,
+    pub parser: Parser<'a>,
+}
+
+impl<'a> Doc<'a> {
+    pub fn parse(text: &'a str) -> Result<Self, ParseError<'a>> {
+        let mut parser = Parser::new(text);
+
+        let title = parser.parse_heading(1)?;
+        let tags = parser.parse_tags().unwrap_or_else(|_| Vec::new());
+
+        Ok(Self {
+            title,
+            tags,
+            parser,
+        })
+    }
+}
 
 /// A Markdown parser.
 ///
@@ -279,53 +303,6 @@ impl<'a> fmt::Display for Actual<'a> {
         match self {
             Self::Eof => write!(f, "end of file"),
             Self::Event(e) => write!(f, "{}", DisplayableEvent(e)),
-        }
-    }
-}
-
-/// Wrapper for `Event`s that allows them to be displayed.
-pub struct DisplayableEvent<'a>(pub &'a Event<'a>);
-
-impl<'a> fmt::Display for DisplayableEvent<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            Event::Start(tag) => write!(f, "start of {}", DisplayableTag(tag)),
-            Event::End(tag) => write!(f, "end of {}", DisplayableTag(tag)),
-            Event::Text(_) => write!(f, "text"),
-            Event::Code(_) => write!(f, "code"),
-            Event::Html(_) => write!(f, "html"),
-            Event::FootnoteReference(_) => write!(f, "footnote reference"),
-            Event::SoftBreak => write!(f, "soft break"),
-            Event::HardBreak => write!(f, "hard break"),
-            Event::Rule => write!(f, "rule"),
-            Event::TaskListMarker(_) => write!(f, "task list marker"),
-        }
-    }
-}
-
-/// Wrapper for `Tag`s that allows them to be displayed.
-pub struct DisplayableTag<'a>(pub &'a Tag<'a>);
-
-impl<'a> fmt::Display for DisplayableTag<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0 {
-            Tag::Paragraph => write!(f, "paragraph"),
-            Tag::Heading(level) => write!(f, "level {} heading", level),
-            Tag::BlockQuote => write!(f, "block quote"),
-            Tag::CodeBlock(_) => write!(f, "code block"),
-            Tag::List(None) => write!(f, "unordered list"),
-            Tag::List(Some(_)) => write!(f, "ordered list"),
-            Tag::Item => write!(f, "list item"),
-            Tag::FootnoteDefinition(_) => write!(f, "footnote definition"),
-            Tag::Table(_) => write!(f, "table"),
-            Tag::TableHead => write!(f, "table head"),
-            Tag::TableRow => write!(f, "table row"),
-            Tag::TableCell => write!(f, "table cell"),
-            Tag::Emphasis => write!(f, "emphasis"),
-            Tag::Strong => write!(f, "strong"),
-            Tag::Strikethrough => write!(f, "strikethrough"),
-            Tag::Link(_, _, _) => write!(f, "link"),
-            Tag::Image(_, _, _) => write!(f, "image"),
         }
     }
 }

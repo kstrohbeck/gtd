@@ -1,82 +1,10 @@
-use crate::parser::{DisplayableEvent, DisplayableTag, ParseError, Parser};
-use pulldown_cmark::{CodeBlockKind, CowStr, Event, LinkType, Tag};
+use crate::pulldown::{event_static, DisplayableEvent, DisplayableTag};
+use pulldown_cmark::{CowStr, Event, LinkType, Tag};
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
     fmt,
 };
-
-pub fn cow_str_static<'a>(cow: CowStr<'a>) -> CowStr<'static> {
-    match cow {
-        CowStr::Borrowed(s) => CowStr::Boxed(s.into()),
-        CowStr::Boxed(s) => CowStr::Boxed(s),
-        CowStr::Inlined(s) => CowStr::Inlined(s),
-    }
-}
-
-fn code_block_kind_static<'a>(kind: CodeBlockKind<'a>) -> CodeBlockKind<'static> {
-    match kind {
-        CodeBlockKind::Fenced(f) => CodeBlockKind::Fenced(cow_str_static(f)),
-        CodeBlockKind::Indented => CodeBlockKind::Indented,
-    }
-}
-
-fn tag_static<'a>(tag: Tag<'a>) -> Tag<'static> {
-    match tag {
-        Tag::Paragraph => Tag::Paragraph,
-        Tag::Heading(h) => Tag::Heading(h),
-        Tag::BlockQuote => Tag::BlockQuote,
-        Tag::CodeBlock(kind) => Tag::CodeBlock(code_block_kind_static(kind)),
-        Tag::List(n) => Tag::List(n),
-        Tag::Item => Tag::Item,
-        Tag::FootnoteDefinition(s) => Tag::FootnoteDefinition(cow_str_static(s)),
-        Tag::Table(align) => Tag::Table(align),
-        Tag::TableHead => Tag::TableHead,
-        Tag::TableRow => Tag::TableRow,
-        Tag::TableCell => Tag::TableCell,
-        Tag::Emphasis => Tag::Emphasis,
-        Tag::Strong => Tag::Strong,
-        Tag::Strikethrough => Tag::Strikethrough,
-        Tag::Link(ty, a, b) => Tag::Link(ty, cow_str_static(a), cow_str_static(b)),
-        Tag::Image(ty, a, b) => Tag::Image(ty, cow_str_static(a), cow_str_static(b)),
-    }
-}
-
-pub fn event_static<'a>(event: Event<'a>) -> Event<'static> {
-    match event {
-        Event::Start(t) => Event::Start(tag_static(t)),
-        Event::End(t) => Event::End(tag_static(t)),
-        Event::Text(s) => Event::Text(cow_str_static(s)),
-        Event::Code(s) => Event::Code(cow_str_static(s)),
-        Event::Html(s) => Event::Html(cow_str_static(s)),
-        Event::FootnoteReference(s) => Event::FootnoteReference(cow_str_static(s)),
-        Event::SoftBreak => Event::SoftBreak,
-        Event::HardBreak => Event::HardBreak,
-        Event::Rule => Event::Rule,
-        Event::TaskListMarker(b) => Event::TaskListMarker(b),
-    }
-}
-
-pub struct Doc<'a> {
-    pub title: Heading,
-    pub tags: Vec<String>,
-    pub parser: Parser<'a>,
-}
-
-impl<'a> Doc<'a> {
-    pub fn parse(text: &'a str) -> Result<Self, ParseError<'a>> {
-        let mut parser = Parser::new(text);
-
-        let title = parser.parse_heading(1)?;
-        let tags = parser.parse_tags().unwrap_or_else(|_| Vec::new());
-
-        Ok(Self {
-            title,
-            tags,
-            parser,
-        })
-    }
-}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fragment(Vec<Event<'static>>);

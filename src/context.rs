@@ -1,6 +1,6 @@
 use crate::{
-    markdown::{BlockRef, Doc, Fragment, Heading},
-    parser,
+    markdown::{BlockRef, Fragment, Heading},
+    parser::{self, Doc},
     project::ActionRef,
 };
 use std::{error::Error, fmt};

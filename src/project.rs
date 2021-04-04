@@ -1,6 +1,6 @@
 use crate::{
-    markdown::{BlockRef, Doc, Fragment, Heading},
-    parser::{self, Parser},
+    markdown::{BlockRef, Fragment, Heading},
+    parser::{self, Doc, Parser},
 };
 use pulldown_cmark::{CowStr, Event, Tag};
 use std::{convert::TryFrom, error::Error, fmt};
