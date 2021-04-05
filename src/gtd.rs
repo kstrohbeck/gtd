@@ -1,8 +1,9 @@
 use crate::{
-    context::{Context, ParseError as ContextParseError},
-    project::{ParseError as ProjectParseError, Project},
+    context::{Context, Name as ContextName, ParseError as ContextParseError},
+    project::{Name as ProjectName, ParseError as ProjectParseError, Project},
 };
 use std::{
+    collections::HashMap,
     convert::AsRef,
     error::Error,
     fmt, fs,
@@ -11,27 +12,51 @@ use std::{
 };
 #[derive(Debug)]
 pub struct Documents {
-    pub projects: Vec<Project>,
-    pub contexts: Vec<Context>,
+    loader: Loader,
+    projects: HashMap<ProjectName, Project>,
+    contexts: HashMap<ContextName, Context>,
 }
 
 impl Documents {
-    pub fn load<P: AsRef<Path>>(cur_dir: P) -> Self {
+    pub fn load<P: AsRef<Path>>(cur_dir: P) -> Option<Self> {
         let cur_dir = cur_dir.as_ref();
         let loader = Loader::new(cur_dir.to_owned());
+
         let projects = loader
             .all_project_names()
-            .unwrap()
-            .map(|name| loader.load_project(&name))
-            .collect::<Result<_, _>>()
-            .unwrap();
+            .ok()?
+            .map(|name| {
+                let project = loader.load_project(&name).unwrap();
+                (name, project)
+            })
+            .collect();
+
         let contexts = loader
             .all_context_names()
-            .unwrap()
-            .map(|name| loader.load_context(&name))
-            .collect::<Result<_, _>>()
-            .unwrap();
-        Self { contexts, projects }
+            .ok()?
+            .map(|name| {
+                let context = loader.load_context(&name).unwrap();
+                (name, context)
+            })
+            .collect();
+
+        Some(Self {
+            loader,
+            projects,
+            contexts,
+        })
+    }
+
+    pub fn projects(&self) -> impl Iterator<Item = &Project> {
+        self.projects.values()
+    }
+
+    pub fn project(&self, name: &ProjectName) -> Option<&Project> {
+        self.projects.get(name)
+    }
+
+    pub fn contexts(&self) -> impl Iterator<Item = &Context> {
+        self.contexts.values()
     }
 }
 
@@ -55,11 +80,11 @@ impl Loader {
     }
 
     pub fn all_project_names(&self) -> Result<impl Iterator<Item = ProjectName>, IoError> {
-        Self::read_dir(&self.project_dir).map(|i| i.map(ProjectName))
+        Self::read_dir(&self.project_dir).map(|i| i.map(|n| ProjectName::new(n).unwrap()))
     }
 
     pub fn all_context_names(&self) -> Result<impl Iterator<Item = ContextName>, IoError> {
-        Self::read_dir(&self.context_dir).map(|i| i.map(ContextName))
+        Self::read_dir(&self.context_dir).map(|i| i.map(ContextName::new))
     }
 
     fn read_dir(dir: &Path) -> Result<impl Iterator<Item = String>, IoError> {
@@ -76,14 +101,14 @@ impl Loader {
     }
 
     pub fn load_project(&self, name: &ProjectName) -> Result<Project, LoadProjectError> {
-        let name = name.to_inner();
+        let name = name.as_str().to_string();
         let text = Self::load_markdown_file(&self.project_dir, &name)?;
         let project = Project::parse(name, &text)?;
         Ok(project)
     }
 
     pub fn load_context(&self, name: &ContextName) -> Result<Context, LoadContextError> {
-        let name = name.to_inner();
+        let name = name.as_str().to_string();
         let text = Self::load_markdown_file(&self.context_dir, &name)?;
         let context = Context::parse(name, &text)?;
         Ok(context)
@@ -93,24 +118,6 @@ impl Loader {
         let mut path = dir.join(name);
         path.set_extension(".md");
         fs::read_to_string(path)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ProjectName(String);
-
-impl ProjectName {
-    fn to_inner(&self) -> String {
-        self.0.clone()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContextName(String);
-
-impl ContextName {
-    fn to_inner(&self) -> String {
-        self.0.clone()
     }
 }
 

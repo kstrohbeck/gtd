@@ -35,7 +35,7 @@ fn main() {
     match gtd.subcommand {
         Subcommand::Validate(_opts) => {
             let docs = Documents::load(cur_dir);
-            validate::validate(docs);
+            validate::validate(docs.unwrap());
         }
     }
 }

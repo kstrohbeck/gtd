@@ -60,13 +60,12 @@ pub fn validate(docs: Documents) {
 
     let mut ids = HashSet::new();
 
-    for project in &docs.projects {
+    for project in docs.projects() {
         validate_project(project, &mut ids);
     }
 
     for project in docs
-        .projects
-        .iter()
+        .projects()
         .filter(|p| p.status == ProjectStatus::InProgress)
     {
         let has_active_action = project
@@ -84,37 +83,41 @@ pub fn validate(docs: Documents) {
         }
     }
 
-    for context in &docs.contexts {
+    for context in docs.contexts() {
         let ctx_title = context.title.try_to_title_string().unwrap();
         let linked_actions = context.actions.iter().filter_map(|a| match a {
             ContextAction::Reference(block_ref) => Some(block_ref),
             ContextAction::Literal(_) => None,
         });
         for action in linked_actions {
-            if let Some(project) = docs.projects.iter().find(|p| p.name == action.project_name) {
-                if project.status != ProjectStatus::InProgress {
+            let project = match docs.project(&action.project_name) {
+                Some(p) => p,
+                None => {
                     println!(
-                        "{} has a next action in {} but is not in progress",
+                        "{} is not a valid link to project in {}",
                         action.project_name, ctx_title
                     );
+                    continue;
                 }
+            };
 
-                if let Some((_act, act_status)) = project.actions.get_action(&action.action_id) {
-                    if act_status != ActionStatus::Active {
-                        println!(
-                            "{} has a next action in {} that isn't in Active",
-                            action.project_name, ctx_title
-                        );
-                    }
-                } else {
+            if project.status != ProjectStatus::InProgress {
+                println!(
+                    "{} has a next action in {} but is not in progress",
+                    action.project_name, ctx_title
+                );
+            }
+
+            if let Some((_act, act_status)) = project.actions.get_action(&action.action_id) {
+                if act_status != ActionStatus::Active {
                     println!(
-                        "{} is referenced in {} but does not have the referencing action",
+                        "{} has a next action in {} that isn't in Active",
                         action.project_name, ctx_title
                     );
                 }
             } else {
                 println!(
-                    "{} is not a valid link to project in {}",
+                    "{} is referenced in {} but does not have the referencing action",
                     action.project_name, ctx_title
                 );
             }

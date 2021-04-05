@@ -90,14 +90,14 @@ impl fmt::Display for Project {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Name {
     name: String,
     split_idx: usize,
 }
 
 impl Name {
-    fn new(name: String) -> Option<Self> {
+    pub fn new(name: String) -> Option<Self> {
         let split_idx = name
             .char_indices()
             .find_map(|(i, c)| if c == ' ' { Some(i) } else { None })?;
@@ -109,6 +109,10 @@ impl Name {
         }
 
         Some(Self { name, split_idx })
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.name
     }
 
     pub fn id(&self) -> &str {
