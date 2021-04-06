@@ -87,7 +87,7 @@ pub fn validate(docs: Documents) {
     for context in docs.contexts() {
         let ctx_title = context.title.try_to_title_string().unwrap();
         let linked_actions = context
-            .actions
+            .actions()
             .iter()
             .filter_map(ContextAction::to_action_ref);
 

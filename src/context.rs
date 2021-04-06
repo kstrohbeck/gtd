@@ -9,7 +9,7 @@ use std::{error::Error, fmt};
 pub struct Context {
     pub name: Name,
     pub title: Heading,
-    pub actions: Vec<Action>,
+    actions: Vec<Action>,
 }
 
 impl Context {
@@ -35,6 +35,10 @@ impl Context {
             title,
             actions,
         })
+    }
+
+    pub fn actions(&self) -> &[Action] {
+        &self.actions[..]
     }
 }
 
