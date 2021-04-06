@@ -115,8 +115,8 @@ impl Loader {
     }
 
     fn load_markdown_file(dir: &Path, name: &str) -> Result<String, std::io::Error> {
-        let mut path = dir.join(name);
-        path.set_extension(".md");
+        let name = format!("{}.md", name);
+        let path = dir.join(name);
         fs::read_to_string(path)
     }
 }
