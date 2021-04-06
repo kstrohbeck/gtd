@@ -6,11 +6,12 @@ use crate::{
 use std::collections::HashSet;
 
 pub fn validate(docs: Documents) {
-    fn validate_project<'a>(project: &'a Project, ids: &mut HashSet<&'a str>) {
-        fn validate_id<'a>(project: &'a Project, ids: &mut HashSet<&'a str>) -> Result<(), String> {
-            let id = project.id();
-
-            if !ids.insert(id) {
+    fn validate_project<'a>(project: &'a Project, project_ids: &HashSet<&'a str>) {
+        fn validate_id<'a>(
+            project: &'a Project,
+            project_ids: &HashSet<&'a str>,
+        ) -> Result<(), String> {
+            if !project_ids.contains(project.id()) {
                 return Err(format!("{} has a duplicate ID", project));
             }
 
@@ -48,7 +49,7 @@ pub fn validate(docs: Documents) {
         }
 
         let validations = vec![
-            validate_id(project, ids),
+            validate_id(project, project_ids),
             validate_title(project),
             verify_all_actions_complete(project),
         ];
@@ -58,10 +59,10 @@ pub fn validate(docs: Documents) {
         }
     }
 
-    let mut ids = HashSet::new();
+    let project_ids = docs.projects().map(|p| p.id()).collect();
 
     for project in docs.projects() {
-        validate_project(project, &mut ids);
+        validate_project(project, &project_ids);
     }
 
     for project in docs
@@ -85,10 +86,11 @@ pub fn validate(docs: Documents) {
 
     for context in docs.contexts() {
         let ctx_title = context.title.try_to_title_string().unwrap();
-        let linked_actions = context.actions.iter().filter_map(|a| match a {
-            ContextAction::Reference(block_ref) => Some(block_ref),
-            ContextAction::Literal(_) => None,
-        });
+        let linked_actions = context
+            .actions
+            .iter()
+            .filter_map(ContextAction::to_action_ref);
+
         for action in linked_actions {
             let project = match docs.project(&action.project_name) {
                 Some(p) => p,

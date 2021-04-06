@@ -64,6 +64,13 @@ impl Action {
             None => Self::Literal(fragment),
         }
     }
+
+    pub fn to_action_ref(&self) -> Option<&ActionRef> {
+        match self {
+            Action::Literal(_) => None,
+            Action::Reference(action_ref) => Some(action_ref),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
