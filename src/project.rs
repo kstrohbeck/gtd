@@ -295,6 +295,12 @@ impl Action {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionId(String);
 
+impl ActionId {
+    pub fn new(id: String) -> Self {
+        Self(id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionRef {
     pub project_name: Name,
