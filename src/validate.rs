@@ -1,128 +1,255 @@
 use crate::{
-    context::Action as ContextAction,
+    context::{Action as ContextAction, Context},
     gtd::Documents,
     project::{ActionStatus, Project, Status as ProjectStatus},
 };
 use std::collections::HashSet;
 
 pub fn validate(docs: Documents) {
-    fn validate_project<'a>(project: &'a Project, project_ids: &HashSet<&'a str>) {
-        fn validate_id<'a>(
-            project: &'a Project,
-            project_ids: &HashSet<&'a str>,
-        ) -> Result<(), String> {
-            if !project_ids.contains(project.id()) {
-                return Err(format!("{} has a duplicate ID", project));
-            }
+    ValidatorRunner::new()
+        .for_all_projects(project_id_is_unique())
+        .for_all_projects(project_title_matches_name)
+        .for_all_projects(complete_project_has_only_complete_actions)
+        .for_all_projects(in_progress_project_has_active_actions)
+        .for_all_context_actions(action_link_is_valid(&docs))
+        .for_all_context_actions(linked_project_is_in_progress(&docs))
+        .for_all_context_actions(linked_project_contains_action(&docs))
+        .for_all_context_actions(action_in_project_is_active(&docs))
+        .run(&docs);
+}
 
-            Ok(())
+fn project_id_is_unique() -> impl FnMut(&Project) -> Result<(), &'static str> {
+    let mut project_ids = HashSet::new();
+
+    move |project| {
+        if !project_ids.insert(project.id().to_string()) {
+            return Err("has a duplicate ID");
         }
 
-        fn validate_title(project: &Project) -> Result<(), String> {
-            let name_title = project.title();
+        Ok(())
+    }
+}
 
-            let body_title = project
-                .title
-                .try_to_title_string()
-                .ok_or_else(|| format!("{} has an invalid title in its body", project))?;
+fn project_title_matches_name(project: &Project) -> Result<(), &'static str> {
+    let name_title = project.title();
 
-            if name_title != body_title {
-                return Err(format!("{}'s name and body title don't match", project));
-            }
+    let body_title = project
+        .title
+        .try_to_title_string()
+        .ok_or("has an invalid title in its body")?;
 
-            Ok(())
-        }
-
-        fn verify_all_actions_complete(project: &Project) -> Result<(), String> {
-            let are_all_actions_complete = project
-                .actions
-                .actions()
-                .all(|(_, status)| status == ActionStatus::Complete);
-            if project.status == ProjectStatus::Complete && !are_all_actions_complete {
-                Err(format!(
-                    "{} is complete but has at least one uncompleted action",
-                    project
-                ))
-            } else {
-                Ok(())
-            }
-        }
-
-        let validations = vec![
-            validate_id(project, project_ids),
-            validate_title(project),
-            verify_all_actions_complete(project),
-        ];
-
-        for err in validations.into_iter().filter_map(|x| x.err()) {
-            println!("{}", err);
-        }
+    if name_title != body_title {
+        return Err("name and body title don't match");
     }
 
-    let project_ids = docs.projects().map(|p| p.id()).collect();
+    Ok(())
+}
 
-    for project in docs.projects() {
-        validate_project(project, &project_ids);
+fn complete_project_has_only_complete_actions(project: &Project) -> Result<(), &'static str> {
+    if project.status != ProjectStatus::Complete {
+        return Ok(());
     }
 
-    for project in docs
-        .projects()
-        .filter(|p| p.status == ProjectStatus::InProgress)
+    let are_all_actions_complete = project
+        .actions
+        .actions()
+        .all(|(_, status)| status == ActionStatus::Complete);
+
+    if !are_all_actions_complete {
+        return Err("is complete but has at least one uncomplete action");
+    }
+
+    Ok(())
+}
+
+fn in_progress_project_has_active_actions(project: &Project) -> Result<(), &'static str> {
+    if project.status != ProjectStatus::InProgress {
+        return Ok(());
+    }
+
+    let has_active_action = project
+        .actions
+        .actions()
+        .filter(|(_, s)| s == &ActionStatus::Active)
+        .count()
+        >= 1;
+
+    if !has_active_action {
+        return Err("is in progress but has no active actions");
+    }
+
+    Ok(())
+}
+
+macro_rules! unwrap_or_ok {
+    ($e:expr) => {
+        match $e {
+            Some(x) => x,
+            None => return Ok(()),
+        }
+    };
+}
+
+fn action_link_is_valid(
+    docs: &Documents,
+) -> impl FnMut(&Context, &ContextAction) -> Result<(), &'static str> + '_ {
+    move |_context, action| {
+        let action_ref = unwrap_or_ok!(action.to_action_ref());
+
+        if docs.project(&action_ref.project_name).is_none() {
+            return Err("not a valid link to project");
+        }
+
+        Ok(())
+    }
+}
+
+fn linked_project_is_in_progress(
+    docs: &Documents,
+) -> impl FnMut(&Context, &ContextAction) -> Result<(), &'static str> + '_ {
+    move |_context, action| {
+        let action_ref = unwrap_or_ok!(action.to_action_ref());
+        let project = unwrap_or_ok!(docs.project(&action_ref.project_name));
+
+        if project.status != ProjectStatus::InProgress {
+            return Err("linked project is not in progress");
+        }
+
+        Ok(())
+    }
+}
+
+fn linked_project_contains_action(
+    docs: &Documents,
+) -> impl FnMut(&Context, &ContextAction) -> Result<(), &'static str> + '_ {
+    move |_context, action| {
+        let action_ref = unwrap_or_ok!(action.to_action_ref());
+        let project = unwrap_or_ok!(docs.project(&action_ref.project_name));
+
+        if project.actions.get_action(&action_ref.action_id).is_none() {
+            return Err("linked project doesn't have the action");
+        }
+
+        Ok(())
+    }
+}
+
+fn action_in_project_is_active(
+    docs: &Documents,
+) -> impl FnMut(&Context, &ContextAction) -> Result<(), &'static str> + '_ {
+    move |_context, action| {
+        let action_ref = unwrap_or_ok!(action.to_action_ref());
+        let project = unwrap_or_ok!(docs.project(&action_ref.project_name));
+        let (_, status) = unwrap_or_ok!(project.actions.get_action(&action_ref.action_id));
+
+        if status != ActionStatus::Active {
+            return Err("action is not active in linked project");
+        }
+
+        Ok(())
+    }
+}
+
+trait ProjectValidator {
+    fn validate(&mut self, project: &Project) -> Result<(), &'static str>;
+}
+
+impl<F> ProjectValidator for F
+where
+    F: FnMut(&Project) -> Result<(), &'static str>,
+{
+    fn validate(&mut self, project: &Project) -> Result<(), &'static str> {
+        self(project)
+    }
+}
+
+trait ContextActionValidator {
+    fn validate(&mut self, context: &Context, action: &ContextAction) -> Result<(), &'static str>;
+}
+
+impl<F> ContextActionValidator for F
+where
+    F: FnMut(&Context, &ContextAction) -> Result<(), &'static str>,
+{
+    fn validate(&mut self, context: &Context, action: &ContextAction) -> Result<(), &'static str> {
+        self(context, action)
+    }
+}
+
+pub struct ValidatorRunner<'a> {
+    project_validators: Vec<Box<dyn ProjectValidator + 'a>>,
+    context_action_validators: Vec<Box<dyn ContextActionValidator + 'a>>,
+}
+
+impl<'a> ValidatorRunner<'a> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn for_all_projects<F>(mut self, validator: F) -> Self
+    where
+        F: FnMut(&Project) -> Result<(), &'static str> + 'a,
     {
-        let has_active_action = project
-            .actions
-            .actions()
-            .filter(|(_, s)| s == &ActionStatus::Active)
-            .count()
-            >= 1;
+        self.project_validators.push(Box::new(validator));
+        self
+    }
 
-        if !has_active_action {
-            println!(
-                "{} is in progress but has no actions in any context",
-                project
-            );
+    pub fn for_all_context_actions<F>(mut self, validator: F) -> Self
+    where
+        F: FnMut(&Context, &ContextAction) -> Result<(), &'static str> + 'a,
+    {
+        self.context_action_validators.push(Box::new(validator));
+        self
+    }
+
+    pub fn run(mut self, docs: &Documents) {
+        for project in docs.projects() {
+            self.run_project_validators(project);
+        }
+
+        for context in docs.contexts() {
+            for action in context.actions() {
+                self.run_context_action_validators(context, action);
+            }
         }
     }
 
-    for context in docs.contexts() {
-        let ctx_title = context.title.try_to_title_string().unwrap();
-        let linked_actions = context
-            .actions()
-            .iter()
-            .filter_map(ContextAction::to_action_ref);
+    fn run_project_validators(&mut self, project: &Project) {
+        let results = self
+            .project_validators
+            .iter_mut()
+            .flat_map(|v| v.validate(project).err())
+            .collect::<Vec<_>>();
 
-        for action in linked_actions {
-            let project = match docs.project(&action.project_name) {
-                Some(p) => p,
-                None => {
-                    println!(
-                        "{} is not a valid link to project in {}",
-                        action.project_name, ctx_title
-                    );
-                    continue;
-                }
-            };
-
-            if project.status != ProjectStatus::InProgress {
-                println!(
-                    "{} has a next action in {} but is not in progress",
-                    action.project_name, ctx_title
-                );
+        if !results.is_empty() {
+            println!("{}:", project.name);
+            for result in results {
+                println!("- {}", result);
             }
+        }
+    }
 
-            if let Some((_act, act_status)) = project.actions.get_action(&action.action_id) {
-                if act_status != ActionStatus::Active {
-                    println!(
-                        "{} has a next action in {} that isn't in Active",
-                        action.project_name, ctx_title
-                    );
-                }
-            } else {
-                println!(
-                    "{} is referenced in {} but does not have the referencing action",
-                    action.project_name, ctx_title
-                );
+    fn run_context_action_validators(&mut self, context: &Context, action: &ContextAction) {
+        let results = self
+            .context_action_validators
+            .iter_mut()
+            .flat_map(|v| v.validate(context, action).err())
+            .collect::<Vec<_>>();
+
+        if !results.is_empty() {
+            println!("action in {}:", context.name);
+            for result in results {
+                println!("- {}", result);
             }
+        }
+    }
+}
+
+impl<'a> Default for ValidatorRunner<'a> {
+    fn default() -> Self {
+        Self {
+            project_validators: Vec::new(),
+            context_action_validators: Vec::new(),
         }
     }
 }
