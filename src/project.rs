@@ -292,7 +292,7 @@ impl Action {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActionId(String);
 
 impl ActionId {
@@ -301,7 +301,7 @@ impl ActionId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActionRef {
     pub project_name: Name,
     pub action_id: ActionId,

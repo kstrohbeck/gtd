@@ -15,6 +15,7 @@ pub fn validate(docs: Documents) {
         .for_all_context_actions(linked_project_is_in_progress)
         .for_all_context_actions(linked_project_contains_action)
         .for_all_context_actions(action_in_project_is_active)
+        .for_all_context_actions(linked_action_is_unique())
         .run(&docs);
 }
 
@@ -143,6 +144,20 @@ fn action_in_project_is_active(
     }
 
     Ok(())
+}
+
+fn linked_action_is_unique(
+) -> impl FnMut(&ContextAction, Option<&Project>) -> Result<(), &'static str> {
+    let mut actions = HashSet::new();
+    move |action, _project| {
+        if let Some(action_ref) = action.to_action_ref() {
+            if !actions.insert(action_ref.clone()) {
+                return Err("action is not unique in contexts");
+            }
+        }
+
+        Ok(())
+    }
 }
 
 trait ProjectValidator {
@@ -617,6 +632,52 @@ mod tests {
             ).unwrap();
 
             let res = action_in_project_is_active(&action, Some(project));
+            assert!(res.is_err());
+        }
+    }
+
+    mod linked_action_is_unique {
+        use super::*;
+
+        #[test]
+        fn unique_action_is_ok() {
+            let action_a = ContextAction::Reference(ActionRef {
+                project_name: ProjectName::new("197001010000 Project title".into()).unwrap(),
+                action_id: ActionId::new("abcdef".into()),
+            });
+            let action_b = ContextAction::Reference(ActionRef {
+                project_name: ProjectName::new("197001010000 Project title".into()).unwrap(),
+                action_id: ActionId::new("abcdeg".into()),
+            });
+            let project = &Project::parse(
+                "197001010000 Project title",
+                "# Project title\n#in-progress\n\n## Actions\n\n### Active\n\n- Action text ^abcdef\n- Other ^abcdeg"
+            ).unwrap();
+
+            let mut validator = linked_action_is_unique();
+            let _ = validator(&action_a, Some(project));
+            let res = validator(&action_b, Some(project));
+            assert!(res.is_ok());
+        }
+
+        #[test]
+        fn repeated_action_is_err() {
+            let action_a = ContextAction::Reference(ActionRef {
+                project_name: ProjectName::new("197001010000 Project title".into()).unwrap(),
+                action_id: ActionId::new("abcdef".into()),
+            });
+            let action_b = ContextAction::Reference(ActionRef {
+                project_name: ProjectName::new("197001010000 Project title".into()).unwrap(),
+                action_id: ActionId::new("abcdef".into()),
+            });
+            let project = &Project::parse(
+                "197001010000 Project title",
+                "# Project title\n#in-progress\n\n## Actions\n\n### Active\n\n- Action text ^abcdef"
+            ).unwrap();
+
+            let mut validator = linked_action_is_unique();
+            let _ = validator(&action_a, Some(project));
+            let res = validator(&action_b, Some(project));
             assert!(res.is_err());
         }
     }
