@@ -16,6 +16,7 @@ pub fn validate(docs: Documents) {
         .for_all_context_actions(linked_project_contains_action)
         .for_all_context_actions(action_in_project_is_active)
         .for_all_context_actions(linked_action_is_unique())
+        .with_ad_hoc(all_active_actions_are_in_a_context)
         .run(&docs);
 }
 
@@ -160,6 +161,51 @@ fn linked_action_is_unique(
     }
 }
 
+fn all_active_actions_are_in_a_context(docs: &Documents) {
+    let active_projects = docs
+        .projects()
+        .filter(|p| p.status == ProjectStatus::InProgress);
+
+    for project in active_projects {
+        let active_actions = project.actions.actions().filter_map(|(a, s)| {
+            if s == ActionStatus::Active {
+                Some(a)
+            } else {
+                None
+            }
+        });
+
+        'outer: for action in active_actions {
+            let action_id = match &action.id {
+                Some(id) => id,
+                None => {
+                    println!(
+                        "Project \"{}\" action is active but isn't in any contexts",
+                        project.title()
+                    );
+                    continue;
+                }
+            };
+
+            for context in docs.contexts() {
+                let action_refs = context.actions().iter().filter_map(|a| a.to_action_ref());
+
+                for action_ref in action_refs {
+                    if &action_ref.action_id == action_id {
+                        continue 'outer;
+                    }
+                }
+            }
+
+            // TODO: Actually print the action.
+            println!(
+                "Project \"{}\" action is active but isn't in any contexts",
+                project.title()
+            );
+        }
+    }
+}
+
 trait ProjectValidator {
     fn validate(&mut self, project: &Project) -> Result<(), &'static str>;
 }
@@ -194,9 +240,23 @@ where
     }
 }
 
+trait AdHocValidator {
+    fn validate(&mut self, docs: &Documents);
+}
+
+impl<F> AdHocValidator for F
+where
+    F: FnMut(&Documents),
+{
+    fn validate(&mut self, docs: &Documents) {
+        self(docs)
+    }
+}
+
 pub struct ValidatorRunner<'a> {
     project_validators: Vec<Box<dyn ProjectValidator + 'a>>,
     context_action_validators: Vec<Box<dyn ContextActionValidator + 'a>>,
+    ad_hoc_validators: Vec<Box<dyn AdHocValidator + 'a>>,
 }
 
 impl<'a> ValidatorRunner<'a> {
@@ -220,6 +280,14 @@ impl<'a> ValidatorRunner<'a> {
         self
     }
 
+    pub fn with_ad_hoc<F>(mut self, validator: F) -> Self
+    where
+        F: FnMut(&Documents) + 'a,
+    {
+        self.ad_hoc_validators.push(Box::new(validator));
+        self
+    }
+
     pub fn run(mut self, docs: &Documents) {
         for project in docs.projects() {
             self.run_project_validators(project);
@@ -233,6 +301,8 @@ impl<'a> ValidatorRunner<'a> {
                 self.run_context_action_validators(context, action, project);
             }
         }
+
+        self.run_ad_hoc_validators(docs);
     }
 
     fn run_project_validators(&mut self, project: &Project) {
@@ -269,6 +339,12 @@ impl<'a> ValidatorRunner<'a> {
             }
         }
     }
+
+    fn run_ad_hoc_validators(&mut self, docs: &Documents) {
+        for v in self.ad_hoc_validators.iter_mut() {
+            v.validate(docs);
+        }
+    }
 }
 
 impl<'a> Default for ValidatorRunner<'a> {
@@ -276,6 +352,7 @@ impl<'a> Default for ValidatorRunner<'a> {
         Self {
             project_validators: Vec::new(),
             context_action_validators: Vec::new(),
+            ad_hoc_validators: Vec::new(),
         }
     }
 }

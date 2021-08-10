@@ -229,8 +229,8 @@ pub enum ActionStatus {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Action {
-    text: Fragment,
-    id: Option<ActionId>,
+    pub text: Fragment,
+    pub id: Option<ActionId>,
 }
 
 impl Action {
