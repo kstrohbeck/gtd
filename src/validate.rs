@@ -41,7 +41,7 @@ fn project_title_matches_name(project: &Project) -> Result<(), Cow<'static, str>
         .ok_or("has an invalid title in its body")?;
 
     if name_title != body_title {
-        return Err("name and body title don't match".into());
+        return Err(format!("has a name \"{}\" that doesn't match its title", body_title).into());
     }
 
     Ok(())
@@ -112,7 +112,7 @@ fn linked_project_is_in_progress(
     let project = unwrap_or_ok!(project);
 
     if project.status != ProjectStatus::InProgress {
-        return Err("linked project is not in progress".into());
+        return Err(format!("linked project \"{}\" is not in progress", project.title()).into());
     }
 
     Ok(())
@@ -126,7 +126,11 @@ fn linked_project_contains_action(
     let project = unwrap_or_ok!(project);
 
     if project.actions.get_action(&action_ref.action_id).is_none() {
-        return Err("linked project doesn't have the action".into());
+        return Err(format!(
+            "linked project \"{}\" doesn't have the action",
+            project.title()
+        )
+        .into());
     }
 
     Ok(())
@@ -141,7 +145,11 @@ fn action_in_project_is_active(
     let (_, status) = unwrap_or_ok!(project.actions.get_action(&action_ref.action_id));
 
     if status != ActionStatus::Active {
-        return Err("action is not active in linked project".into());
+        return Err(format!(
+            "action is not active in linked project \"{}\"",
+            project.title()
+        )
+        .into());
     }
 
     Ok(())
